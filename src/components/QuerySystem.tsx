@@ -24,7 +24,8 @@ export default function QuerySystem({
   const [passwordError, setPasswordError] = useState("");
 
   const [searchId, setSearchId] = useState("");
-  const [queriedResponse, setQueriedResponse] = useState<SurveyResponse | null>(null);
+  const [queriedResponses, setQueriedResponses] = useState<SurveyResponse[]>([]);
+  const [selectedResponseIndex, setSelectedResponseIndex] = useState<number>(0);
   const [editedAnswers, setEditedAnswers] = useState<Record<string, any>>({});
   const [searchError, setSearchError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -45,7 +46,8 @@ export default function QuerySystem({
   const handleQuerySearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearchError("");
-    setQueriedResponse(null);
+    setQueriedResponses([]);
+    setSelectedResponseIndex(0);
     setSuccessMsg("");
 
     const searchKey = searchId.trim().toLowerCase();
@@ -58,7 +60,7 @@ export default function QuerySystem({
     const surveyResponses = allResponses.filter(r => r.surveyId === survey.id);
     
     // Match based on searchQuestionId if specified, otherwise fallback to response ID
-    const matched = surveyResponses.find(r => {
+    const matchedList = surveyResponses.filter(r => {
       if (queryConfig.searchQuestionId) {
         const answerVal = r.answers[queryConfig.searchQuestionId];
         if (answerVal !== undefined && answerVal !== null) {
@@ -72,9 +74,10 @@ export default function QuerySystem({
       return r.id.toLowerCase() === searchKey;
     });
 
-    if (matched) {
-      setQueriedResponse(matched);
-      setEditedAnswers({ ...matched.answers });
+    if (matchedList.length > 0) {
+      setQueriedResponses(matchedList);
+      setSelectedResponseIndex(0);
+      setEditedAnswers({ ...matchedList[0].answers });
     } else {
       if (queryConfig.searchQuestionId) {
         const qTitle = survey.questions.find(q => q.id === queryConfig.searchQuestionId)?.title || "指定查詢欄位";
@@ -92,6 +95,7 @@ export default function QuerySystem({
 
   // Save the edited answers (線上修改更正)
   const handleSaveChanges = async () => {
+    const queriedResponse = queriedResponses[selectedResponseIndex];
     if (!queriedResponse) return;
     setIsSaving(true);
     setSuccessMsg("");
@@ -109,8 +113,12 @@ export default function QuerySystem({
       await new Promise(resolve => setTimeout(resolve, 800));
 
       onUpdateResponse(updatedResponse);
-      setQueriedResponse(updatedResponse);
-      setSuccessMsg("🎉 成功線上修改更正問卷答案！資料已安全同步至資料庫。");
+      
+      const newList = [...queriedResponses];
+      newList[selectedResponseIndex] = updatedResponse;
+      setQueriedResponses(newList);
+      
+      setSuccessMsg(`🎉 成功線上更正「檔案袋 ${selectedResponseIndex + 1} (${queriedResponse.id})」之回答！資料已安全同步。`);
     } catch {
       setSearchError("更新失敗，請稍後再試。");
     } finally {
@@ -167,6 +175,8 @@ export default function QuerySystem({
       </div>
     );
   }
+
+  const queriedResponse = queriedResponses.length > 0 ? queriedResponses[selectedResponseIndex] : null;
 
   return (
     <div className="w-full max-w-3xl mx-auto my-6" id="query-content-container">
@@ -238,174 +248,235 @@ export default function QuerySystem({
 
         {/* Query Results Display */}
         {queriedResponse ? (
-          <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <span className="text-xs text-slate-400">填寫編號</span>
-                <h3 className="text-sm font-bold font-mono text-slate-700">{queriedResponse.id}</h3>
-              </div>
-              <div className="text-right">
-                <span className="text-xs text-slate-400">提交時間</span>
-                <p className="text-xs font-mono text-slate-600">{queriedResponse.submittedAt}</p>
-              </div>
-            </div>
-
-            {successMsg && (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold leading-relaxed flex items-center space-x-2">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-            )}
-
-            <div className="space-y-5">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">問卷回復內容與權限操作欄位</h4>
-              {survey.questions.map((q) => {
-                const isEditable = queryConfig.editableQuestionIds.includes(q.id);
-                const currentValue = editedAnswers[q.id];
-
+          <div className="bg-amber-50/20">
+            {/* Folder Drawer Tabs (檔案袋上方的分頁標籤) */}
+            <div className="flex border-b border-amber-200/80 bg-slate-100 flex-wrap select-none" id="query-folder-tabs">
+              {queriedResponses.map((res, index) => {
+                const isActive = index === selectedResponseIndex;
                 return (
-                  <div 
-                    key={q.id} 
-                    className={`p-4 rounded-xl border transition-all ${
-                      isEditable 
-                        ? "bg-amber-50/40 border-amber-200 shadow-sm" 
-                        : "bg-slate-50/60 border-slate-100"
+                  <button
+                    key={res.id + '-' + index}
+                    id={`query-tab-btn-${index}`}
+                    type="button"
+                    onClick={() => {
+                      setSelectedResponseIndex(index);
+                      setEditedAnswers({ ...res.answers });
+                      setSuccessMsg("");
+                    }}
+                    className={`relative px-4 py-3 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer border-r border-slate-200 ${
+                      isActive
+                        ? "bg-amber-50 text-amber-900 border-t-2 border-t-amber-600 font-extrabold shadow-sm"
+                        : "bg-slate-50 text-slate-500 hover:text-slate-800 hover:bg-slate-100"
                     }`}
+                    style={{
+                      clipPath: 'polygon(0% 0%, 90% 0%, 100% 100%, 0% 100%)',
+                      paddingRight: '1.75rem'
+                    }}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-slate-700">{q.title}</span>
-                      {isEditable ? (
-                        <span className="text-[10px] bg-amber-600 text-white font-bold px-2 py-0.5 rounded-full select-none flex items-center space-x-0.5">
-                          <Edit3 className="w-2.5 h-2.5" />
-                          <span>允許線上更正項目</span>
-                        </span>
-                      ) : (
-                        <span className="text-[10px] bg-slate-200 text-slate-500 font-bold px-2 py-0.5 rounded-full select-none">
-                          唯讀項目
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="pt-1">
-                      {isEditable ? (
-                        // Render inputs for editing
-                        <div>
-                          {q.type === "SINGLE_CHOICE" && (
-                            <select
-                              id={`query-edit-select-${q.id}`}
-                              value={currentValue || ""}
-                              onChange={(e) => handleEditChange(q.id, e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:border-amber-500"
-                            >
-                              <option value="">--請選擇--</option>
-                              {q.options?.map((opt, oIdx) => (
-                                <option key={oIdx} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          )}
-
-                          {q.type === "MULTI_CHOICE" && (
-                            <div className="space-y-1.5" id={`query-edit-multi-${q.id}`}>
-                              {q.options?.map((opt, oIdx) => {
-                                const list = (currentValue as string[]) || [];
-                                const isChecked = list.includes(opt);
-                                return (
-                                  <label key={oIdx} className="flex items-center space-x-2 text-xs cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={(e) => {
-                                        let newList = [...list];
-                                        if (e.target.checked) {
-                                          newList.push(opt);
-                                        } else {
-                                          newList = newList.filter(item => item !== opt);
-                                        }
-                                        handleEditChange(q.id, newList);
-                                      }}
-                                      className="w-3.5 h-3.5 rounded text-amber-600 border-slate-300 focus:ring-amber-500"
-                                    />
-                                    <span className="text-slate-700">{opt}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {(q.type === "SHORT_TEXT" || q.type === "PARAGRAPH") && (
-                            <textarea
-                              id={`query-edit-textarea-${q.id}`}
-                              rows={q.type === "PARAGRAPH" ? 3 : 1}
-                              value={currentValue || ""}
-                              onChange={(e) => handleEditChange(q.id, e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs focus:border-amber-500 font-sans"
-                              placeholder="請輸入進行更正..."
-                            />
-                          )}
-
-                          {q.type === "RATING" && (
-                            <div className="flex items-center space-x-1.5" id={`query-edit-rating-${q.id}`}>
-                              {[1, 2, 3, 4, 5].map((star) => (
-                                <button
-                                  key={star}
-                                  type="button"
-                                  onClick={() => handleEditChange(q.id, star)}
-                                  className="focus:outline-none"
-                                >
-                                  <svg
-                                    className={`w-6 h-6 ${
-                                      star <= (currentValue || 0) ? "text-amber-400 fill-amber-400" : "text-slate-200"
-                                    }`}
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                  >
-                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                                  </svg>
-                                </button>
-                              ))}
-                              <span className="text-xs text-slate-500 font-bold ml-2">({currentValue || 0}星)</span>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        // Render standard read-only styling
-                        <div className="bg-slate-100/50 p-2.5 rounded-lg border border-slate-50 text-xs font-mono text-slate-700 leading-relaxed">
-                          {currentValue === undefined || currentValue === null || (Array.isArray(currentValue) && currentValue.length === 0)
-                            ? "（未填寫）"
-                            : Array.isArray(currentValue)
-                            ? currentValue.join(", ")
-                            : String(currentValue)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    <span className="shrink-0 text-amber-600 text-sm">📂</span>
+                    <span className="tracking-wide">
+                      檔案袋-{index + 1} ({res.id})
+                    </span>
+                  </button>
                 );
               })}
             </div>
 
-            {/* Prominent Online correction button (線上修改更正) */}
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
-              <button
-                id="query-online-correction-submit"
-                onClick={handleSaveChanges}
-                disabled={isSaving}
-                className="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:from-amber-700 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all flex items-center justify-center space-x-2 border-2 border-amber-300 ring-4 ring-amber-100 font-bold hover:scale-[1.02]"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>正在儲存更正數據...</span>
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" style={{ animationDuration: '4s' }} />
-                    <span className="tracking-wide">⚡ 線上修改更正</span>
-                  </>
+            <div className="p-6 space-y-6 bg-white min-h-[300px]" id="query-active-folder-content">
+              {/* Folder Interior Frame info */}
+              <div className="p-3.5 bg-amber-50 border border-amber-200/40 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-amber-950 shadow-sm">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm">📁</span>
+                  <span>
+                    當前查閱：第 <strong className="text-amber-800 text-sm">{selectedResponseIndex + 1} / {queriedResponses.length}</strong> 份配對檔案 (答卷 ID: <strong className="font-mono text-amber-800 font-bold bg-amber-100/60 px-1 py-0.2 rounded">{queriedResponse.id}</strong>)
+                  </span>
+                </div>
+                {queriedResponses.length > 1 && (
+                  <button 
+                    type="button"
+                    id="next-folder-btn"
+                    className="text-[10px] bg-amber-600 hover:bg-amber-700 active:bg-amber-800 transition-all font-bold text-white px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-1 shadow-xs" 
+                    onClick={() => {
+                      const nextIdx = (selectedResponseIndex + 1) % queriedResponses.length;
+                      setSelectedResponseIndex(nextIdx);
+                      setEditedAnswers({ ...queriedResponses[nextIdx].answers });
+                      setSuccessMsg("");
+                    }}
+                  >
+                    <span>切換下一檔 ➔</span>
+                  </button>
                 )}
-              </button>
+              </div>
+
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <span className="text-xs text-slate-400">填寫編號</span>
+                  <h3 className="text-sm font-bold font-mono text-slate-700">{queriedResponse.id}</h3>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-slate-400">提交時間</span>
+                  <p className="text-xs font-mono text-slate-600">{queriedResponse.submittedAt}</p>
+                </div>
+              </div>
+
+              {successMsg && (
+                <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold leading-relaxed flex items-center space-x-2">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{successMsg}</span>
+                </div>
+              )}
+
+              <div className="space-y-5">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">問卷回復內容與權限操作欄位</h4>
+                {survey.questions.map((q) => {
+                  const isEditable = queryConfig.editableQuestionIds.includes(q.id);
+                  const currentValue = editedAnswers[q.id];
+
+                  return (
+                    <div 
+                      key={q.id} 
+                      className={`p-4 rounded-xl border transition-all ${
+                        isEditable 
+                          ? "bg-amber-50/40 border-amber-200 shadow-sm" 
+                          : "bg-slate-50/60 border-slate-100"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-slate-700">{q.title}</span>
+                        {isEditable ? (
+                          <span className="text-[10px] bg-amber-600 text-white font-bold px-2 py-0.5 rounded-full select-none flex items-center space-x-0.5">
+                            <Edit3 className="w-2.5 h-2.5" />
+                            <span>允許線上更正項目</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-slate-200 text-slate-500 font-bold px-2 py-0.5 rounded-full select-none">
+                            唯讀項目
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="pt-1">
+                        {isEditable ? (
+                          // Render inputs for editing
+                          <div>
+                            {q.type === "SINGLE_CHOICE" && (
+                              <select
+                                id={`query-edit-select-${q.id}`}
+                                value={currentValue !== undefined && currentValue !== null ? String(currentValue) : ""}
+                                onChange={(e) => handleEditChange(q.id, e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:border-amber-500"
+                              >
+                                <option value="">--請選擇--</option>
+                                {q.options?.map((opt, oIdx) => (
+                                  <option key={oIdx} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            )}
+
+                            {q.type === "MULTI_CHOICE" && (
+                              <div className="space-y-1.5" id={`query-edit-multi-${q.id}`}>
+                                {q.options?.map((opt, oIdx) => {
+                                  const list = (currentValue as string[]) || [];
+                                  const isChecked = list.includes(opt);
+                                  return (
+                                    <label key={oIdx} className="flex items-center space-x-2 text-xs cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          let newList = [...list];
+                                          if (e.target.checked) {
+                                            newList.push(opt);
+                                          } else {
+                                            newList = newList.filter(item => item !== opt);
+                                          }
+                                          handleEditChange(q.id, newList);
+                                        }}
+                                        className="w-3.5 h-3.5 rounded text-amber-600 border-slate-300 focus:ring-amber-500"
+                                      />
+                                      <span className="text-slate-700">{opt}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {(q.type === "SHORT_TEXT" || q.type === "PARAGRAPH") && (
+                              <textarea
+                                id={`query-edit-textarea-${q.id}`}
+                                rows={q.type === "PARAGRAPH" ? 3 : 1}
+                                value={currentValue !== undefined && currentValue !== null ? String(currentValue) : ""}
+                                onChange={(e) => handleEditChange(q.id, e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs focus:border-amber-500 font-sans"
+                                placeholder="請輸入進行更正..."
+                              />
+                            )}
+
+                            {q.type === "RATING" && (
+                              <div className="flex items-center space-x-1.5" id={`query-edit-rating-${q.id}`}>
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <button
+                                    key={star}
+                                    type="button"
+                                    onClick={() => handleEditChange(q.id, star)}
+                                    className="focus:outline-none cursor-pointer"
+                                  >
+                                    <svg
+                                      className={`w-6 h-6 ${
+                                        star <= (currentValue || 0) ? "text-amber-400 fill-amber-400" : "text-slate-200"
+                                      }`}
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                    >
+                                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                    </svg>
+                                  </button>
+                                ))}
+                                <span className="text-xs text-slate-500 font-bold ml-2">({currentValue || 0}星)</span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          // Render standard read-only styling
+                          <div className="bg-slate-100/50 p-2.5 rounded-lg border border-slate-50 text-xs font-mono text-slate-700 leading-relaxed">
+                            {currentValue === undefined || currentValue === null || (Array.isArray(currentValue) && currentValue.length === 0)
+                              ? "（未填寫）"
+                              : Array.isArray(currentValue)
+                              ? currentValue.join(", ")
+                              : String(currentValue)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Prominent Online correction button (線上修改更正) */}
+              <div className="pt-4 border-t border-slate-100 flex justify-end">
+                <button
+                  id="query-online-correction-submit"
+                  type="button"
+                  onClick={handleSaveChanges}
+                  disabled={isSaving}
+                  className="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:from-amber-700 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all flex items-center justify-center space-x-2 border-2 border-amber-300 ring-4 ring-amber-100 hover:scale-[1.02]"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>正在儲存更正數據...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" style={{ animationDuration: '4s' }} />
+                      <span className="tracking-wide">⚡ 儲存此檔案更正</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         ) : (

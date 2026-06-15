@@ -53,6 +53,7 @@ interface DashboardProps {
   onUpdateLogList: (updated: AuditLog[]) => void;
   onLogout: () => void;
   onSelectQuerySystem: (survey: Questionnaire, query: QuerySystemConfig) => void;
+  onUpdateCurrentUser?: (updated: AppUser) => void;
 }
 
 export default function Dashboard({
@@ -66,13 +67,19 @@ export default function Dashboard({
   onUpdatePromotions,
   onUpdateLogList,
   onLogout,
-  onSelectQuerySystem
+  onSelectQuerySystem,
+  onUpdateCurrentUser
 }: DashboardProps) {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<"analytics" | "submissions" | "survey_configs" | "rbac" | "profile" | "logs">("analytics");
 
   // Selection
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>(questionnaires[0]?.id || "");
+
+  // Personal account details & username changes
+  const [newPersonalUsername, setNewPersonalUsername] = useState(currentUser.username);
+  const [personalUsernameMsg, setPersonalUsernameMsg] = useState("");
+  const [personalUsernameError, setPersonalUsernameError] = useState("");
 
   // Password edit state
   const [oldPassword, setOldPassword] = useState("");
@@ -150,6 +157,10 @@ export default function Dashboard({
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<UserRole>(UserRole.OPERATOR);
   const [newUserStar, setNewUserStar] = useState<number>(1);
+
+  useEffect(() => {
+    setNewPersonalUsername(currentUser.username);
+  }, [currentUser.username]);
 
   useEffect(() => {
     // Sync local users list for RBAC panel
@@ -288,6 +299,74 @@ export default function Dashboard({
       "駁回人員: " + app.username,
       `超級管理員駁回了 ${app.username} 的晉級申請項目。`
     );
+  };
+
+  // Modify individual's own username (姓名/帳號名稱) for all accounts
+  const handlePersonalUsernameChange = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPersonalUsernameMsg("");
+    setPersonalUsernameError("");
+
+    const cleanedName = newPersonalUsername.trim();
+    if (!cleanedName) {
+      setPersonalUsernameError("❌ 姓名 / 帳號名稱不能為空項目！");
+      return;
+    }
+
+    if (cleanedName === currentUser.username) {
+      setPersonalUsernameMsg("💡 姓名 / 帳號名稱與原有設定一致，無需更新。");
+      return;
+    }
+
+    const stored = localStorage.getItem("sub_users");
+    if (stored) {
+      const uList = JSON.parse(stored);
+      if (uList[cleanedName]) {
+        setPersonalUsernameError("❌ 該帳號名稱與現存的後台其他帳號重複，請換一個新名稱。");
+        return;
+      }
+
+      const userRecord = uList[currentUser.username];
+      if (userRecord) {
+        userRecord.username = cleanedName;
+        uList[cleanedName] = userRecord;
+        delete uList[currentUser.username];
+
+        // Save back users
+        localStorage.setItem("sub_users", JSON.stringify(uList));
+        setRbacUsers(uList);
+
+        // Notify parent application
+        const updatedUser = { ...currentUser, username: cleanedName };
+        if (onUpdateCurrentUser) {
+          onUpdateCurrentUser(updatedUser);
+        }
+
+        setPersonalUsernameMsg("🎉 恭喜！您已成功將後台登入與身分顯示名稱更名為：" + cleanedName);
+        addLog(
+          "更名操作",
+          "修改自身帳號名稱",
+          `用戶 ${currentUser.username} 線上自行變更其身分識別帳號名稱為 [${cleanedName}]。`
+        );
+      } else {
+        // If super admin is not in local storage we can still allow them to rename session and insert
+        const newRecord = {
+          username: cleanedName,
+          password: "123", // default fallback password
+          role: currentUser.role,
+          assignedTables: currentUser.assignedTables || []
+        };
+        uList[cleanedName] = newRecord;
+        localStorage.setItem("sub_users", JSON.stringify(uList));
+        setRbacUsers(uList);
+
+        const updatedUser = { ...currentUser, username: cleanedName };
+        if (onUpdateCurrentUser) {
+          onUpdateCurrentUser(updatedUser);
+        }
+        setPersonalUsernameMsg("🎉 成功定義並初始化您的後台帳密對並完成更名為：" + cleanedName);
+      }
+    }
   };
 
   // Update own password
@@ -2536,73 +2615,139 @@ export default function Dashboard({
             </div>
           )}
 
-          {/* TAB 5: Password change center */}
+          {/* TAB 5: Password & Profile Name change center */}
           {activeTab === "profile" && (
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800">🔒 變更個人登入後台密碼</h2>
-                <p className="text-slate-500 text-xs mt-1">為了資安考量，建議您定期更新自身後台帳密，防止機敏問卷與個資洩漏。</p>
+            <div className="space-y-6">
+              {/* Card 1: Name customization */}
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>👤</span> 修改個人姓名 / 帳號名稱
+                  </h2>
+                  <p className="text-slate-500 text-xs mt-1">變更您在後台進行問卷管理、更正與日誌留存時所顯示的身分識別帳號名稱，所有身分帳號均支援此功能。</p>
+                </div>
+
+                <form onSubmit={handlePersonalUsernameChange} className="max-w-md space-y-4">
+                  {personalUsernameError && (
+                    <div className="p-3 bg-rose-50 border-l-4 border-rose-500 text-rose-800 text-xs font-bold rounded">
+                      ⚠️ {personalUsernameError}
+                    </div>
+                  )}
+
+                  {personalUsernameMsg && (
+                    <div className="p-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-xs font-bold rounded">
+                      {personalUsernameMsg}
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500">
+                      當前帳號名稱: <span className="text-indigo-600 underline font-mono select-all ml-1.5">{currentUser.username}</span>
+                    </label>
+                    <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl text-slate-600 font-mono text-xs flex justify-between items-center select-none">
+                      <span>此帳戶後台權限：</span>
+                      <span className="text-indigo-700 bg-indigo-50 border border-indigo-200 font-bold font-sans rounded px-2.5 py-0.5 text-[10px]">
+                        {currentUser.role === UserRole.SUPER_ADMIN && "⭐ 超級管理員"}
+                        {currentUser.role === UserRole.SYSTEM_ADMIN && "系統管理員"}
+                        {currentUser.role === UserRole.OPERATOR && "操作人員"}
+                        {currentUser.role === UserRole.ANALYST && "分析人員"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500">請設定新的名稱</label>
+                    <input
+                      id="profile-new-username-input"
+                      type="text"
+                      value={newPersonalUsername}
+                      onChange={(e) => setNewPersonalUsername(e.target.value)}
+                      placeholder="請輸入您偏好的管理姓名/新帳號"
+                      className="w-full bg-slate-50 border border-slate-200 p-2.5 text-xs rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none transition-all font-mono"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      id="profile-username-submit-btn"
+                      type="submit"
+                      className="py-2.5 px-6 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-all flex items-center justify-center space-x-1.5 hover:scale-[1.01]"
+                    >
+                      <span>更新名稱設定</span>
+                    </button>
+                  </div>
+                </form>
               </div>
 
-              <form onSubmit={handlePasswordChange} className="max-w-md space-y-4">
-                {profileError && (
-                  <div className="p-3 bg-rose-50 border-l-4 border-rose-500 text-rose-800 text-xs font-bold rounded">
-                    ⚠️ {profileError}
+              {/* Card 2: Password change center */}
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>🔒</span> 變更個人登入後台密碼
+                  </h2>
+                  <p className="text-slate-500 text-xs mt-1">為了資安考量，建議您定期更新自身後台帳密，防止機敏問卷與個資洩漏。</p>
+                </div>
+
+                <form onSubmit={handlePasswordChange} className="max-w-md space-y-4">
+                  {profileError && (
+                    <div className="p-3 bg-rose-50 border-l-4 border-rose-500 text-rose-800 text-xs font-bold rounded">
+                      ⚠️ {profileError}
+                    </div>
+                  )}
+
+                  {profileMsg && (
+                    <div className="p-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-xs font-bold rounded">
+                      {profileMsg}
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500">輸入舊安全密碼</label>
+                    <input
+                      id="profile-old-password"
+                      type="password"
+                      value={oldPassword}
+                      onChange={(e) => setOldPassword(e.target.value)}
+                      placeholder="請輸入現有密碼"
+                      className="w-full bg-slate-50 border border-slate-200 p-2 text-xs rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
+                    />
                   </div>
-                )}
 
-                {profileMsg && (
-                  <div className="p-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-xs font-bold rounded">
-                    {profileMsg}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500">輸入新安全密碼</label>
+                    <input
+                      id="profile-new-password"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="密碼長度建議六位字符以上"
+                      className="w-full bg-slate-50 border border-slate-200 p-2 text-xs rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
+                    />
                   </div>
-                )}
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500">輸入舊安全密碼</label>
-                  <input
-                    id="profile-old-password"
-                    type="password"
-                    value={oldPassword}
-                    onChange={(e) => setOldPassword(e.target.value)}
-                    placeholder="請輸入現有密碼"
-                    className="w-full bg-slate-50 border border-slate-200 p-2 text-xs rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
-                  />
-                </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500">再次確認輸入新密碼</label>
+                    <input
+                      id="profile-confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="請重複新密碼"
+                      className="w-full bg-slate-50 border border-slate-200 p-2 text-xs rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
+                    />
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500">輸入新安全密碼</label>
-                  <input
-                    id="profile-new-password"
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="密碼長度建議六位字符以上"
-                    className="w-full bg-slate-50 border border-slate-200 p-2 text-xs rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500">再次確認輸入新密碼</label>
-                  <input
-                    id="profile-confirm-password"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="請重複新密碼"
-                    className="w-full bg-slate-50 border border-slate-200 p-2 text-xs rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
-                  />
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    id="profile-password-submit-btn"
-                    type="submit"
-                    className="py-2.5 px-6 bg-slate-900 hover:bg-slate-800 active:bg-black text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-all"
-                  >
-                    更新登入通行密碼
-                  </button>
-                </div>
-              </form>
+                  <div className="pt-2">
+                    <button
+                      id="profile-password-submit-btn"
+                      type="submit"
+                      className="py-2.5 px-6 bg-slate-900 hover:bg-slate-800 active:bg-black text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-all"
+                    >
+                      更新登入通行密碼
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
 

@@ -255,6 +255,10 @@ export default function App() {
             onUpdatePromotions={handleUpdatePromotions}
             onUpdateLogList={handleUpdateLogs}
             onLogout={handleLogout}
+            onUpdateCurrentUser={(user) => {
+              setCurrentUser(user);
+              localStorage.setItem("sub_logged_user", JSON.stringify(user));
+            }}
             onSelectQuerySystem={(survey, config) => {
               setSelectedQuerySystem({ survey, config });
               window.location.hash = `#query/${survey.id}/${config.id}`;
