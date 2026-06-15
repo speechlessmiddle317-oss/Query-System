@@ -111,6 +111,12 @@ export default function Dashboard({
   const [rbacUsers, setRbacUsers] = useState<Record<string, any>>({});
   const [rbacSelectedUser, setRbacSelectedUser] = useState<string>("");
 
+  // New user registration state (Super Admin use)
+  const [newUsername, setNewUsername] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserRole, setNewUserRole] = useState<UserRole>(UserRole.OPERATOR);
+  const [newUserStar, setNewUserStar] = useState<number>(1);
+
   useEffect(() => {
     // Sync local users list for RBAC panel
     const stored = localStorage.getItem("sub_users");
@@ -311,6 +317,49 @@ export default function Dashboard({
         alert(`已成功儲存用戶 ${username} 的RBAC控制設定！核發表格數已限制於星等上限。`);
       }
     }
+  };
+
+  const handleCreateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUser = newUsername.trim().toLowerCase();
+    if (!cleanUser) {
+      alert("⚠️ 請輸入想要建立的帳號名稱！");
+      return;
+    }
+    if (!newUserPassword.trim()) {
+      alert("⚠️ 請輸入存取密碼！");
+      return;
+    }
+
+    if (rbacUsers[cleanUser] || cleanUser === "super_admin") {
+      alert("⚠️ 該帳號名稱已存在，請使用其他名稱！");
+      return;
+    }
+
+    const uList = { ...rbacUsers };
+    uList[cleanUser] = {
+      username: cleanUser,
+      password: newUserPassword.trim(),
+      role: newUserRole,
+      starLevel: (newUserRole === UserRole.OPERATOR || newUserRole === UserRole.ANALYST) ? newUserStar : undefined,
+      assignedTables: []
+    };
+
+    localStorage.setItem("sub_users", JSON.stringify(uList));
+    setRbacUsers(uList);
+
+    addLog(
+      "新增系統帳號",
+      "帳號授權: " + cleanUser,
+      `超級管理員新增了全新後台帳號: ${cleanUser}，指派角色: ${newUserRole}${
+        (newUserRole === UserRole.OPERATOR || newUserRole === UserRole.ANALYST) ? ` (${newUserStar}星)` : ""
+      }`
+    );
+
+    alert(`🎉 帳號 ${cleanUser} 創建成功！`);
+    setNewUsername("");
+    setNewUserPassword("");
+    setRbacSelectedUser(cleanUser); // Auto-select newly created user for convenience
   };
 
   // Add question to questionnaire creator
@@ -1461,10 +1510,88 @@ export default function Dashboard({
                 </div>
               </div>
 
+              {/* 新增全新帳號專區 */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <PlusCircle className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-xs font-bold text-slate-700">建立新系統帳號 (新增人員成員)</h3>
+                </div>
+
+                <form onSubmit={handleCreateUser} className="p-5 bg-blue-50/40 rounded-2xl border border-blue-100/60 grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 block">帳號名稱 (Username)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="例如: operator4"
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs focus:border-blue-500 font-mono outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 block">存取密碼 (Password)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="請輸入密碼"
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs focus:border-blue-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 block">預派角色 (Role)</label>
+                    <select
+                      value={newUserRole}
+                      onChange={(e) => setNewUserRole(e.target.value as UserRole)}
+                      className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs focus:border-blue-500 outline-none"
+                    >
+                      <option value={UserRole.OPERATOR}>操作員 (Operator)</option>
+                      <option value={UserRole.ANALYST}>分析員 (Analyst)</option>
+                      <option value={UserRole.SYSTEM_ADMIN}>系統管理員 (System Admin)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {(newUserRole === UserRole.OPERATOR || newUserRole === UserRole.ANALYST) ? (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block">初始認證星等</label>
+                        <select
+                          value={newUserStar}
+                          onChange={(e) => setNewUserStar(Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs focus:border-blue-500 outline-none font-mono"
+                        >
+                          <option value={1}>⭐ 1星 (可指派 1 張問卷)</option>
+                          <option value={2}>⭐⭐ 2星 (可指派 2 張問卷)</option>
+                          <option value={3}>⭐⭐⭐ 3星 (可指派 3 張問卷)</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 block">限制說明</label>
+                        <p className="text-[10px] text-slate-400 mt-1">系統管理員自帶所有表格管理權，不需設定星等。</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="md:col-span-4 flex justify-end pt-2">
+                    <button
+                      type="submit"
+                      className="px-5 py-2 hover:bg-blue-700 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-sm cursor-pointer transition-colors"
+                    >
+                      確認新增此帳號
+                    </button>
+                  </div>
+                </form>
+              </div>
+
               {/* Edit User Roles in detail */}
               <div className="space-y-4">
                 <div className="flex items-center space-x-2">
-                  <UserCheck className="w-4 h-4 text-indigo-600" />
+                  <UserCheck className="w-4 h-4 text-blue-600" />
                   <h3 className="text-xs font-bold text-slate-700">帳號屬性、核定星等與表格指派調整 (RBAC控制規則)</h3>
                 </div>
 
