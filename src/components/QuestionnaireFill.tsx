@@ -15,7 +15,7 @@ export default function QuestionnaireFill({ survey, onSubmit, onBackList, isDire
   const [isUnlocked, setIsUnlocked] = useState(!survey.passwordRequired);
   const [passwordError, setPasswordError] = useState("");
 
-  const [currentStep, setCurrentStep] = useState(0);
+  const [pageIndex, setPageIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
@@ -73,7 +73,11 @@ export default function QuestionnaireFill({ survey, onSubmit, onBackList, isDire
     }
   };
 
-  const currentQuestion = survey.questions[currentStep];
+  // Pagination config: 10 questions per page
+  const questionsPerPage = 10;
+  const totalPages = Math.ceil(survey.questions.length / questionsPerPage);
+  const isLastPage = pageIndex === totalPages - 1 || totalPages === 0;
+  const visibleQuestions = survey.questions.slice(pageIndex * questionsPerPage, (pageIndex + 1) * questionsPerPage);
 
   // Answer handler
   const handleAnswerChange = (questionId: string, value: any) => {
@@ -93,35 +97,53 @@ export default function QuestionnaireFill({ survey, onSubmit, onBackList, isDire
     handleAnswerChange(questionId, newList);
   };
 
-  // Step validation
-  const validateStep = (): boolean => {
-    if (!currentQuestion) return true;
-    if (currentQuestion.required) {
-      const answer = answers[currentQuestion.id];
-      if (answer === undefined || answer === null || (Array.isArray(answer) && answer.length === 0) || (typeof answer === "string" && answer.trim() === "")) {
-        setErrors(prev => ({ ...prev, [currentQuestion.id]: "本題為必填題，請回答後再繼續" }));
-        return false;
+  // Page validation
+  const validateCurrentPage = (): boolean => {
+    let isValid = true;
+    const newErrors: Record<string, string> = { ...errors };
+    const visibleQuestionsIds = visibleQuestions.map(q => q.id);
+
+    // Clear previous errors for visible questions
+    visibleQuestionsIds.forEach(id => {
+      delete newErrors[id];
+    });
+
+    for (const q of visibleQuestions) {
+      if (q.required) {
+        const answer = answers[q.id];
+        if (
+          answer === undefined ||
+          answer === null ||
+          (Array.isArray(answer) && answer.length === 0) ||
+          (typeof answer === "string" && answer.trim() === "")
+        ) {
+          newErrors[q.id] = "本題為必填題，請回答此欄位。";
+          isValid = false;
+        }
       }
     }
-    return true;
+    setErrors(newErrors);
+    return isValid;
   };
 
   const handleNext = () => {
-    if (validateStep()) {
-      if (currentStep < survey.questions.length - 1) {
-        setCurrentStep(prev => prev + 1);
+    if (validateCurrentPage()) {
+      if (pageIndex < totalPages - 1) {
+        setPageIndex(prev => prev + 1);
+        document.getElementById("survey-active-fill-container")?.scrollIntoView({ behavior: "smooth" });
       }
     }
   };
 
   const handlePrev = () => {
-    if (currentStep > 0) {
-      setCurrentStep(prev => prev - 1);
+    if (pageIndex > 0) {
+      setPageIndex(prev => prev - 1);
+      document.getElementById("survey-active-fill-container")?.scrollIntoView({ behavior: "smooth" });
     }
   };
 
   const handleSubmitAnswers = () => {
-    if (!validateStep()) return;
+    if (!validateCurrentPage()) return;
 
     // Trigger submit
     onSubmit({
@@ -138,8 +160,8 @@ export default function QuestionnaireFill({ survey, onSubmit, onBackList, isDire
     }
   };
 
-  const progressPercent = survey.questions.length > 0 
-    ? Math.round(((currentStep + 1) / survey.questions.length) * 100) 
+  const progressPercent = totalPages > 0 
+    ? Math.round(((pageIndex + 1) / totalPages) * 100) 
     : 100;
 
   // Unlocked screen check
@@ -319,8 +341,8 @@ export default function QuestionnaireFill({ survey, onSubmit, onBackList, isDire
         <div className="px-8 py-4 bg-slate-50 border-b border-blue-50 flex items-center justify-between">
           <div className="flex-1 mr-4">
             <div className="flex justify-between items-center text-xs text-blue-800 font-semibold mb-1">
-              <span>問卷填寫進度</span>
-              <span>第 {currentStep + 1} 題 / 共 {survey.questions.length} 題 ({progressPercent}%)</span>
+              <span>問卷頁面填寫進度</span>
+              <span>第 {pageIndex + 1} 頁 / 共 {totalPages} 頁 ({progressPercent}%)</span>
             </div>
             <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
               <div 
@@ -331,147 +353,152 @@ export default function QuestionnaireFill({ survey, onSubmit, onBackList, isDire
           </div>
         </div>
 
-        {/* Question Area */}
-        <div className="p-8 space-y-6">
-          {currentQuestion ? (
-            <div className="space-y-4">
-              <div className="flex items-start space-x-2">
-                <span className="text-blue-600 text-lg font-extrabold font-mono mt-0.5">{currentStep + 1}.</span>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-800">
-                    {currentQuestion.title}
-                    {currentQuestion.required && (
-                      <span className="text-rose-500 text-sm font-bold ml-1.5" title="必填項目">* 必填</span>
-                    )}
-                  </h2>
-                </div>
-              </div>
-
-              {/* Renders option-specific fields */}
-              <div className="pl-6 pt-2">
-                {currentQuestion.type === "SINGLE_CHOICE" && (
-                  <div className="space-y-2.5" id={`question-choice-${currentQuestion.id}`}>
-                    {currentQuestion.options?.map((opt, oIdx) => (
-                      <label 
-                        key={oIdx} 
-                        className={`flex items-center space-x-3 p-4 rounded-xl border border-slate-200 hover:bg-blue-50 cursor-pointer transition-all ${
-                          answers[currentQuestion.id] === opt 
-                            ? "bg-blue-50/70 border-blue-200 ring-2 ring-blue-100" 
-                            : "bg-slate-50"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name={`q-${currentQuestion.id}`}
-                          value={opt}
-                          checked={answers[currentQuestion.id] === opt}
-                          onChange={() => handleAnswerChange(currentQuestion.id, opt)}
-                          className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span className="text-slate-800 text-sm font-medium">{opt}</span>
-                      </label>
-                    ))}
+        {/* Question Area - Flat Single Column Column List */}
+        <div className="p-8 divide-y divide-slate-100 space-y-6">
+          {visibleQuestions.length > 0 ? (
+            visibleQuestions.map((q, idx) => {
+              const questionNumber = pageIndex * questionsPerPage + idx + 1;
+              return (
+                <div key={q.id} className={`space-y-4 ${idx > 0 ? "pt-6" : ""}`}>
+                  <div className="flex items-start space-x-2">
+                    <span className="text-blue-600 text-lg font-extrabold font-mono mt-0.5">{questionNumber}.</span>
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-805">
+                        {q.title}
+                        {q.required && (
+                          <span className="text-rose-500 text-sm font-bold ml-1.5" title="必填項目">* 必填</span>
+                        )}
+                      </h2>
+                    </div>
                   </div>
-                )}
 
-                {currentQuestion.type === "MULTI_CHOICE" && (
-                  <div className="space-y-2.5" id={`question-multi-${currentQuestion.id}`}>
-                    <p className="text-xs text-slate-400 mb-2">※ 複選題（可多選）</p>
-                    {currentQuestion.options?.map((opt, oIdx) => {
-                      const list = (answers[currentQuestion.id] as string[]) || [];
-                      const isChecked = list.includes(opt);
-                      return (
-                        <label 
-                          key={oIdx} 
-                          className={`flex items-center space-x-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-100 cursor-pointer transition-all ${
-                            isChecked
-                              ? "bg-blue-50/70 border-blue-200 ring-2 ring-blue-50" 
-                              : "bg-slate-50"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => handleCheckboxChange(currentQuestion.id, opt, e.target.checked)}
-                            className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                          />
-                          <span className="text-slate-800 text-sm font-medium">{opt}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {currentQuestion.type === "SHORT_TEXT" && (
-                  <input
-                    id={`question-text-${currentQuestion.id}`}
-                    type="text"
-                    value={answers[currentQuestion.id] || ""}
-                    onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
-                    placeholder="請輸入您的回答內容..."
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 text-slate-800 text-sm outline-none transition-all"
-                  />
-                )}
-
-                {currentQuestion.type === "PARAGRAPH" && (
-                  <textarea
-                    id={`question-paragraph-${currentQuestion.id}`}
-                    rows={4}
-                    value={answers[currentQuestion.id] || ""}
-                    onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
-                    placeholder="請在此輸入您的詳細反饋與具體建議..."
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 text-slate-800 text-sm outline-none transition-all resize-none"
-                  />
-                )}
-
-                {currentQuestion.type === "RATING" && (
-                  <div className="space-y-3" id={`question-rating-${currentQuestion.id}`}>
-                    <div className="flex items-center space-x-2">
-                      {[1, 2, 3, 4, 5].map((star) => {
-                        const score = answers[currentQuestion.id] || 0;
-                        return (
-                          <button
-                            key={star}
-                            type="button"
-                            onClick={() => handleAnswerChange(currentQuestion.id, star)}
-                            className="p-1 focus:outline-none focus:scale-110 duration-150 transition-all cursor-pointer"
-                            title={`${star} 分`}
+                  {/* Renders option-specific fields */}
+                  <div className="pl-6 pt-2">
+                    {q.type === "SINGLE_CHOICE" && (
+                      <div className="space-y-2.5" id={`question-choice-${q.id}`}>
+                        {q.options?.map((opt, oIdx) => (
+                          <label 
+                            key={oIdx} 
+                            className={`flex items-center space-x-3 p-4 rounded-xl border border-slate-200 hover:bg-blue-50 cursor-pointer transition-all ${
+                              answers[q.id] === opt 
+                                ? "bg-blue-50/70 border-blue-200 ring-2 ring-blue-100" 
+                                : "bg-slate-50"
+                            }`}
                           >
-                            <svg
-                              className={`w-10 h-10 ${
-                                star <= score ? "text-amber-400 fill-amber-400" : "text-slate-200"
-                              } transition-colors`}
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                            </svg>
-                          </button>
-                        );
-                      })}
-                      {answers[currentQuestion.id] && (
-                        <span className="text-sm font-bold text-slate-500 ml-4">
-                          得分: <code className="text-blue-600 text-lg">{answers[currentQuestion.id]}</code> / 5
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex justify-between max-w-xs text-xs text-slate-400">
-                      <span>非常不滿意 (1分)</span>
-                      <span>極度滿意 (5分)</span>
-                    </div>
-                  </div>
-                )}
+                            <input
+                              type="radio"
+                              name={`q-${q.id}`}
+                              value={opt}
+                              checked={answers[q.id] === opt}
+                              onChange={() => handleAnswerChange(q.id, opt)}
+                              className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span className="text-slate-800 text-sm font-medium">{opt}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
 
-                {errors[currentQuestion.id] && (
-                  <p className="text-xs text-rose-500 mt-2.5 font-bold animate-pulse">{errors[currentQuestion.id]}</p>
-                )}
-              </div>
-            </div>
+                    {q.type === "MULTI_CHOICE" && (
+                      <div className="space-y-2.5" id={`question-multi-${q.id}`}>
+                        <p className="text-xs text-slate-400 mb-2">※ 複選題（可多選）</p>
+                        {q.options?.map((opt, oIdx) => {
+                          const list = (answers[q.id] as string[]) || [];
+                          const isChecked = list.includes(opt);
+                          return (
+                            <label 
+                              key={oIdx} 
+                              className={`flex items-center space-x-3 p-4 rounded-xl border border-slate-200 hover:bg-slate-100 cursor-pointer transition-all ${
+                                isChecked
+                                  ? "bg-blue-50/70 border-blue-200 ring-2 ring-blue-50" 
+                                  : "bg-slate-50"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => handleCheckboxChange(q.id, opt, e.target.checked)}
+                                className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                              />
+                              <span className="text-slate-800 text-sm font-medium">{opt}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {q.type === "SHORT_TEXT" && (
+                      <input
+                        id={`question-text-${q.id}`}
+                        type="text"
+                        value={answers[q.id] || ""}
+                        onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                        placeholder="請輸入您的回答內容..."
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 text-slate-800 text-sm outline-none transition-all"
+                      />
+                    )}
+
+                    {q.type === "PARAGRAPH" && (
+                      <textarea
+                        id={`question-paragraph-${q.id}`}
+                        rows={4}
+                        value={answers[q.id] || ""}
+                        onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                        placeholder="請在此輸入您的詳細反饋與具體建議..."
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 text-slate-800 text-sm outline-none transition-all resize-none"
+                      />
+                    )}
+
+                    {q.type === "RATING" && (
+                      <div className="space-y-3" id={`question-rating-${q.id}`}>
+                        <div className="flex items-center space-x-2">
+                          {[1, 2, 3, 4, 5].map((star) => {
+                            const score = answers[q.id] || 0;
+                            return (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => handleAnswerChange(q.id, star)}
+                                className="p-1 focus:outline-none focus:scale-110 duration-150 transition-all cursor-pointer"
+                                title={`${star} 分`}
+                              >
+                                <svg
+                                  className={`w-10 h-10 ${
+                                    star <= score ? "text-amber-400 fill-amber-400" : "text-slate-200"
+                                  } transition-colors`}
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                </svg>
+                              </button>
+                            );
+                          })}
+                          {answers[q.id] && (
+                            <span className="text-sm font-bold text-slate-500 ml-4">
+                              得分: <code className="text-blue-600 text-lg">{answers[q.id]}</code> / 5
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex justify-between max-w-xs text-xs text-slate-400">
+                          <span>非常不滿意 (1分)</span>
+                          <span>極度滿意 (5分)</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {errors[q.id] && (
+                      <p className="text-xs text-rose-500 mt-2.5 font-bold animate-pulse">{errors[q.id]}</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })
           ) : (
             <p className="text-center text-slate-400 py-8">本問卷無有效題目，請管理員排解。</p>
           )}
@@ -483,18 +510,18 @@ export default function QuestionnaireFill({ survey, onSubmit, onBackList, isDire
             id="survey-nav-prev"
             type="button"
             onClick={handlePrev}
-            disabled={currentStep === 0}
+            disabled={pageIndex === 0}
             className={`flex items-center space-x-1.5 px-4 h-11 text-sm font-bold rounded-xl border transition-all ${
-              currentStep === 0
+              pageIndex === 0
                 ? "border-slate-100 text-slate-300 cursor-not-allowed"
                 : "border-slate-200 text-slate-600 bg-white hover:bg-slate-100 cursor-pointer"
             }`}
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>上一題</span>
+            <span>上一頁</span>
           </button>
 
-          {currentStep === survey.questions.length - 1 ? (
+          {isLastPage ? (
             <div className="flex items-center space-x-2">
               {survey.emailNotificationEnabled && !emailInput && (
                 <div className="hidden md:flex items-center mr-2">
@@ -523,9 +550,9 @@ export default function QuestionnaireFill({ survey, onSubmit, onBackList, isDire
               id="survey-nav-next"
               type="button"
               onClick={handleNext}
-              className="flex items-center space-x-1.5 px-6 h-11 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-all cursor-pointer"
+              className="flex items-center space-x-1.5 px-6 h-11 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-all cursor-pointer animate-pulse"
             >
-              <span>下一題</span>
+              <span>下一頁</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           )}

@@ -131,6 +131,9 @@ export default function Dashboard({
   const [editSurveyStart, setEditSurveyStart] = useState("");
   const [editSurveyEnd, setEditSurveyEnd] = useState("");
   const [editSurveyQuestions, setEditSurveyQuestions] = useState<Question[]>([]);
+  const [editSurveyDistributedToAdmins, setEditSurveyDistributedToAdmins] = useState(true);
+
+  const [newSurveyDistributedToAdmins, setNewSurveyDistributedToAdmins] = useState(true);
 
   // Dynamic Questionnaire Editor's "+ Add New Question" temp state
   const [editTempQTitle, setEditTempQTitle] = useState("");
@@ -199,8 +202,21 @@ export default function Dashboard({
 
   // Helper check if current user is allowed to access specific table
   const checkTableAccess = (surveyId: string): boolean => {
-    if (currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SYSTEM_ADMIN) {
+    if (currentUser.role === UserRole.SUPER_ADMIN) {
       return true;
+    }
+
+    const targetSurvey = questionnaires.find(q => q.id === surveyId);
+
+    if (currentUser.role === UserRole.SYSTEM_ADMIN) {
+      if (targetSurvey && targetSurvey.distributedToAdmins === false) {
+        return false;
+      }
+      return true;
+    }
+
+    if (targetSurvey && targetSurvey.distributedToAdmins === false) {
+      return false;
     }
     return currentUser.assignedTables?.includes(surveyId) || false;
   };
@@ -521,7 +537,8 @@ export default function Dashboard({
       password: newSurveyPwReq ? newSurveyPw : undefined,
       querySystems: [],
       emailNotificationEnabled: newSurveyEmail,
-      questions: newSurveyQs
+      questions: newSurveyQs,
+      distributedToAdmins: newSurveyDistributedToAdmins
     };
 
     const updated = [...questionnaires, nSurvey];
@@ -530,7 +547,7 @@ export default function Dashboard({
     addLog(
       "新增問卷",
       nSurvey.title,
-      `新增問卷 ID: ${nSurvey.id}，自定義填寫密碼=${nSurvey.passwordRequired ? "是" : "否"}`
+      `新增問卷 ID: ${nSurvey.id}，下發至系統管理員=${nSurvey.distributedToAdmins ? "是" : "否"}`
     );
 
     // reset
@@ -542,6 +559,7 @@ export default function Dashboard({
     setNewSurveyStart("");
     setNewSurveyEnd("");
     setNewSurveyQs([]);
+    setNewSurveyDistributedToAdmins(true);
     setIsCreatingSurvey(false);
     alert("問卷成功發布！");
   };
@@ -563,6 +581,26 @@ export default function Dashboard({
       );
       alert("問卷已徹底刪除。");
     }
+  };
+
+  const handleMoveSurvey = (id: string, direction: "up" | "down") => {
+    const index = questionnaires.findIndex(q => q.id === id);
+    if (index === -1) return;
+    const targetIdx = direction === "up" ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= questionnaires.length) return;
+
+    const list = [...questionnaires];
+    const temp = list[index];
+    list[index] = list[targetIdx];
+    list[targetIdx] = temp;
+
+    onUpdateQuestionnaires(list);
+
+    addLog(
+      "調整問卷位置",
+      `移動問卷位置：${temp.title}`,
+      `超級管理員將問卷【${temp.title}】在列表中${direction === "up" ? "向上" : "向下"}移動了一位。`
+    );
   };
 
   // Add query subystem to a survey
@@ -687,6 +725,69 @@ export default function Dashboard({
     setRbacSelectedUser(cleanNewName); // Switch selection to new name!
   };
 
+  const handleDeleteSubUser = (targetUser: string) => {
+    if (!targetUser) return;
+    if (targetUser === "super_admin") {
+      alert("⚠️ 超級管理員帳號不可被刪除！");
+      return;
+    }
+    const confirmDelete = window.confirm(`⚠️ 確定要永久刪除帳號【${targetUser}】嗎？此動作將永久移除此人員，且無法復原！`);
+    if (!confirmDelete) return;
+
+    const uList = { ...rbacUsers };
+    if (!uList[targetUser]) return;
+
+    delete uList[targetUser];
+    localStorage.setItem("sub_users", JSON.stringify(uList));
+    setRbacUsers(uList);
+
+    // Also update promotions list by deleting pending/or all promotions matching username
+    const updatedPromotions = promotions.filter(p => p.username !== targetUser);
+    onUpdatePromotions(updatedPromotions);
+
+    addLog(
+      "刪除下屬系統帳號",
+      `刪除帳號：${targetUser}`,
+      `超級管理員永久刪除了隸屬編制人員【${targetUser}】之帳號。`
+    );
+
+    alert(`🎉 帳號【${targetUser}】已永久刪除！`);
+    setRbacSelectedUser(""); // Reset selection
+  };
+
+  const handleDeleteOwnAccount = () => {
+    if (currentUser.username === "super_admin") {
+      alert("⚠️ 超級管理員帳號是預設管理帳戶，為安全起見不可刪除！");
+      return;
+    }
+
+    const confirmDelete = window.confirm(`⚠️ 【危險警報】您確定要註銷並永久刪除您自己的帳號【${currentUser.username}】嗎？此操作將使您立刻被登出、移出系統，並且此決定完全無法還原！`);
+    if (!confirmDelete) return;
+
+    // Load sub-users and delete self
+    const stored = localStorage.getItem("sub_users");
+    let uList = stored ? JSON.parse(stored) : {};
+    
+    if (uList[currentUser.username]) {
+      delete uList[currentUser.username];
+      localStorage.setItem("sub_users", JSON.stringify(uList));
+    }
+
+    // Update promotions list to clear self requests
+    const updatedPromotions = promotions.filter(p => p.username !== currentUser.username);
+    onUpdatePromotions(updatedPromotions);
+
+    // Add log before logging out
+    addLog(
+      "使用者註銷自身帳號",
+      `帳號自毀：${currentUser.username}`,
+      `用戶 ${currentUser.username} 註銷並永久刪除了自己的帳號。`
+    );
+
+    alert("🎉 您的帳號已成功註銷並刪除！期待與您的下次相見。");
+    onLogout();
+  };
+
   // Save survey modifications and custom questions inside editor
   const handleSaveSurveyEditor = () => {
     if (!editSurveyTitle.trim()) {
@@ -709,7 +810,8 @@ export default function Dashboard({
           passwordRequired: editSurveyPwReq,
           password: editSurveyPwReq ? editSurveyPw : undefined,
           emailNotificationEnabled: editSurveyEmail,
-          questions: editSurveyQuestions
+          questions: editSurveyQuestions,
+          distributedToAdmins: editSurveyDistributedToAdmins
         };
       }
       return q;
@@ -1601,6 +1703,23 @@ export default function Dashboard({
                           <span>填答送出自動派發電子郵件副本（給填寫人自留）</span>
                         </label>
                       </div>
+
+                      {currentUser.role === UserRole.SUPER_ADMIN && (
+                        <div className="md:col-span-2 pt-2 border-t border-slate-200 mt-1">
+                          <label className="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={editSurveyDistributedToAdmins}
+                              onChange={(e) => setEditSurveyDistributedToAdmins(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-teal-600 cursor-pointer"
+                            />
+                            <span className="flex items-center text-teal-900 font-bold">
+                              <span className="bg-teal-100 text-teal-950 text-[9px] px-1.5 py-0.5 rounded font-extrabold mr-1.5 shrink-0">特權下發</span>
+                              <span>下發授權此問卷項目至「系統管理員」（開啟後，系統管理員具有對此表格的所有共同檢閱與編輯權限）</span>
+                            </span>
+                          </label>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2074,6 +2193,24 @@ export default function Dashboard({
                           </label>
                           <p className="text-[9px] text-slate-400">啟用後，填寫者於送出時可指定其電子郵件信箱，系統將自動派送備份驗證通知信。</p>
                         </div>
+
+                        {currentUser.role === UserRole.SUPER_ADMIN && (
+                          <div className="space-y-2 md:col-span-2 pt-2 border-t border-slate-100">
+                            <label className="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer">
+                              <input
+                                id="new-survey-distribute-checkbox"
+                                type="checkbox"
+                                checked={newSurveyDistributedToAdmins}
+                                onChange={(e) => setNewSurveyDistributedToAdmins(e.target.checked)}
+                                className="w-4 h-4 text-teal-600 rounded cursor-pointer"
+                              />
+                              <span className="flex items-center text-teal-900 font-bold">
+                                <span className="bg-teal-100 text-teal-905 text-[9px] px-1.5 py-0.5 rounded-md font-extrabold mr-1.5 shrink-0">特權下發</span>
+                                <span>下發授權此問卷項目至「系統管理員」（開啟後，系統管理員具有對此表格的所有共同檢閱與編輯權限）</span>
+                              </span>
+                            </label>
+                          </div>
+                        )}
                       </div>
 
                       {/* Add questions block */}
@@ -2187,14 +2324,49 @@ export default function Dashboard({
                   <div className="space-y-4">
                     <h3 className="text-sm font-bold text-slate-750 font-sans">📋 目前發布中之自定義問卷與管理：</h3>
                     <div className="grid grid-cols-1 gap-5">
-                      {questionnaires.map((q) => (
+                      {accessibleQuestionnaires.map((q) => (
                         <div key={q.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-150 shadow-sm space-y-4 font-sans text-xs">
                           <div className="flex items-start justify-between flex-wrap gap-2">
                             <div>
-                              <div className="flex items-center space-x-2">
+                              <div className="flex items-center space-x-2 flex-wrap gap-y-1.5">
                                 <span className="text-xs font-mono font-bold text-slate-500 bg-slate-200/60 px-1.5 py-0.5 rounded">ID: {q.id}</span>
                                 <span className={`w-2 h-2 rounded-full ${q.isActive ? "bg-emerald-500 animate-ping" : "bg-rose-500"}`} />
                                 <span className="text-[10px] font-bold text-slate-500">{q.isActive ? "填寫中" : "停用/待啟用"}</span>
+                                {q.distributedToAdmins === false && (
+                                  <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-200 font-bold px-1.5 py-0.5 rounded-md shadow-xs">🔒 僅超級管理員可控</span>
+                                )}
+                                {currentUser.role === UserRole.SUPER_ADMIN && (
+                                  <div className="flex items-center space-x-1 ml-2">
+                                    <button
+                                      id={`move-up-survey-${q.id}`}
+                                      type="button"
+                                      onClick={() => handleMoveSurvey(q.id, "up")}
+                                      disabled={questionnaires.findIndex(item => item.id === q.id) === 0}
+                                      className={`px-2 py-1 rounded-md border text-[9px] font-bold transition-all cursor-pointer ${
+                                        questionnaires.findIndex(item => item.id === q.id) === 0
+                                          ? "bg-slate-100 text-slate-350 border-slate-200 cursor-not-allowed"
+                                          : "bg-slate-800 text-white hover:bg-slate-700 border-slate-900 active:scale-95"
+                                      }`}
+                                      title="上移問卷順序"
+                                    >
+                                      ▲ 上移
+                                    </button>
+                                    <button
+                                      id={`move-down-survey-${q.id}`}
+                                      type="button"
+                                      onClick={() => handleMoveSurvey(q.id, "down")}
+                                      disabled={questionnaires.findIndex(item => item.id === q.id) === questionnaires.length - 1}
+                                      className={`px-2 py-1 rounded-md border text-[9px] font-bold transition-all cursor-pointer ${
+                                        questionnaires.findIndex(item => item.id === q.id) === questionnaires.length - 1
+                                          ? "bg-slate-100 text-slate-350 border-slate-200 cursor-not-allowed"
+                                          : "bg-slate-800 text-white hover:bg-slate-700 border-slate-900 active:scale-95"
+                                      }`}
+                                      title="下移問卷順序"
+                                    >
+                                      ▼ 下移
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                               <h4 className="text-base font-bold text-slate-800 mt-1.5">{q.title}</h4>
                               <p className="text-[11px] text-slate-400 mt-1 max-w-xl">{q.description}</p>
@@ -2215,6 +2387,7 @@ export default function Dashboard({
                                   setEditSurveyPw(q.password || "");
                                   setEditSurveyEmail(q.emailNotificationEnabled || false);
                                   setEditSurveyQuestions([...q.questions]);
+                                  setEditSurveyDistributedToAdmins(q.distributedToAdmins !== false);
                                 }}
                                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] rounded-lg shadow-sm cursor-pointer transition-transform duration-75 active:scale-95"
                               >
@@ -2495,11 +2668,21 @@ export default function Dashboard({
                   {rbacSelectedUser && rbacUsers[rbacSelectedUser] && (
                     <div className="bg-white p-4 border border-slate-200/80 rounded-xl space-y-4 font-mono text-xs">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-[10px] text-slate-400 block pb-1">目前帳號職級狀態</span>
-                          <p className="text-slate-800 font-bold text-sm">
-                            {rbacSelectedUser} [密碼: {rbacUsers[rbacSelectedUser].password}]
-                          </p>
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-50 p-3 rounded-lg border border-slate-150 gap-2">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block pb-1">目前帳號職級狀態</span>
+                            <p className="text-slate-800 font-bold text-sm">
+                              {rbacSelectedUser} [密碼: {rbacUsers[rbacSelectedUser].password}]
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSubUser(rbacSelectedUser)}
+                            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer flex items-center space-x-1 shrink-0 shadow-sm"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>永久刪除此人員帳號</span>
+                          </button>
                         </div>
 
                         {/* Username modification input block */}
@@ -2747,6 +2930,38 @@ export default function Dashboard({
                     </button>
                   </div>
                 </form>
+              </div>
+
+              {/* Card 3: Delete Account (Danger Zone) */}
+              <div className="bg-slate-50 rounded-2xl border border-red-150 p-6 space-y-4">
+                <div>
+                  <h2 className="text-lg font-bold text-rose-700 flex items-center gap-1.5">
+                    <span>⚠️</span> 註銷並永久刪除此帳號 (自毀專區)
+                  </h2>
+                  <p className="text-slate-500 text-xs mt-1">您在此處可以主動永久刪除自己的帳號。注意：此作業不可復原，超級管理員帳號不可自毀。</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-rose-200/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <span className="text-xs text-slate-400 font-bold block animate-pulse">※ 欲永久關閉並註銷的當前登入帳號：</span>
+                    <strong className="text-slate-800 text-sm font-mono">{currentUser.username}</strong>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleDeleteOwnAccount}
+                      disabled={currentUser.username === "super_admin"}
+                      className={`px-4 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center space-x-1 shadow-sm ${
+                        currentUser.username === "super_admin"
+                          ? "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
+                          : "bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white"
+                      }`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>永久註銷並刪除帳號</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

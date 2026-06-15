@@ -48,6 +48,7 @@ export interface Questionnaire {
   password?: string;
   querySystems: QuerySystemConfig[];
   emailNotificationEnabled: boolean;
+  distributedToAdmins?: boolean;
 }
 
 export interface SurveyResponse {

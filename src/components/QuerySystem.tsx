@@ -118,7 +118,7 @@ export default function QuerySystem({
       newList[selectedResponseIndex] = updatedResponse;
       setQueriedResponses(newList);
       
-      setSuccessMsg(`🎉 成功線上更正「檔案袋 ${selectedResponseIndex + 1} (${queriedResponse.id})」之回答！資料已安全同步。`);
+      setSuccessMsg(`🎉 成功線上更正「檔案 ${selectedResponseIndex + 1} (${queriedResponse.id})」之回答！資料已安全同步。`);
     } catch {
       setSearchError("更新失敗，請稍後再試。");
     } finally {
@@ -249,7 +249,7 @@ export default function QuerySystem({
         {/* Query Results Display */}
         {queriedResponse ? (
           <div className="bg-amber-50/20">
-            {/* Folder Drawer Tabs (檔案袋上方的分頁標籤) */}
+            {/* Folder Drawer Tabs (檔案上方的分頁標籤) */}
             <div className="flex border-b border-amber-200/80 bg-slate-100 flex-wrap select-none" id="query-folder-tabs">
               {queriedResponses.map((res, index) => {
                 const isActive = index === selectedResponseIndex;
@@ -268,14 +268,10 @@ export default function QuerySystem({
                         ? "bg-amber-50 text-amber-900 border-t-2 border-t-amber-600 font-extrabold shadow-sm"
                         : "bg-slate-50 text-slate-500 hover:text-slate-800 hover:bg-slate-100"
                     }`}
-                    style={{
-                      clipPath: 'polygon(0% 0%, 90% 0%, 100% 100%, 0% 100%)',
-                      paddingRight: '1.75rem'
-                    }}
                   >
                     <span className="shrink-0 text-amber-600 text-sm">📂</span>
                     <span className="tracking-wide">
-                      檔案袋-{index + 1} ({res.id})
+                      檔案-{index + 1} ({res.id})
                     </span>
                   </button>
                 );
