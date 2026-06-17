@@ -47,8 +47,9 @@ export default function Login({ onLoginSuccess, addLog }: LoginProps) {
     const storedUsers = localStorage.getItem("sub_users");
     let usersList = storedUsers ? JSON.parse(storedUsers) : { ...INITIAL_USERS };
 
-    // Self-healing check: Ensure webmaster always exists in the database
-    if (!usersList["webmaster"]) {
+    // Self-healing check: Ensure at least one webmaster exists in the database
+    const hasWebmaster = Object.values(usersList).some((u: any) => u?.role === UserRole.WEBMASTER);
+    if (!hasWebmaster) {
       usersList["webmaster"] = {
         username: "webmaster",
         password: "123",

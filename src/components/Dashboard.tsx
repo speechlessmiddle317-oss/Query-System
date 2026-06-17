@@ -42,7 +42,8 @@ import {
   ShieldCheck,
   Bell,
   BellOff,
-  Users
+  Users,
+  User
 } from "lucide-react";
 import LogView from "./LogView";
 
@@ -1377,8 +1378,8 @@ export default function Dashboard({
               }`}
             >
               <div className="flex items-center space-x-2">
-                <LockKeyhole className="w-4 h-4" />
-                <span>🔒 變更個人密碼</span>
+                <User className="w-4 h-4" />
+                <span>👤 修改個人資訊</span>
               </div>
               <ChevronRight className="w-3 h-3 opacity-60" />
             </button>
@@ -3184,7 +3185,7 @@ export default function Dashboard({
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
                 <div>
                   <h2 className="text-lg font-bold text-slate-800 flex items-center gap-1.5">
-                    <span>🔒</span> 變更個人登入後台密碼
+                    <span>🔒</span> 修改個人登入後台密碼
                   </h2>
                   <p className="text-slate-500 text-xs mt-1">為了資安考量，建議您定期更新自身後台帳密，防止機敏問卷與個資洩漏。</p>
                 </div>
