@@ -802,7 +802,7 @@ export default function Dashboard({
     
     if (isCorrect) {
       const currentPts = currentUser.respondentPoints || 0;
-      const newPts = currentPts + 20;
+      const newPts = currentPts + 7;
 
       const storedUsers = localStorage.getItem("sub_users");
       if (storedUsers) {
@@ -829,9 +829,9 @@ export default function Dashboard({
       addLog(
         "答題闖關成功",
         `題目: ${currentQ.question}`,
-        `答題人答對並獲得 20 點積分。當前總積分: ${newPts} 點`
+        `答題人答對並獲得 7 點積分。當前總積分: ${newPts} 點`
       );
-      alert(`🎉 答對囉！太棒了！獲得 20 點積分！\n解析：${currentQ.explanation}`);
+      alert(`🎉 答對囉！太棒了！獲得 7 點積分！\n解析：${currentQ.explanation}`);
     } else {
       addLog(
         "答題闖關失敗",
@@ -1055,6 +1055,9 @@ export default function Dashboard({
       return;
     }
 
+    const qObj = questionnaires.find(q => q.id === stopSurveyId);
+    const targetCreator = qObj?.createdBy || "system";
+
     const updated = questionnaires.map(q => {
       if (q.id === stopSurveyId) {
         const stops = (q as any).stopApplied || [];
@@ -1075,13 +1078,31 @@ export default function Dashboard({
     });
 
     onUpdateQuestionnaires(updated);
+
+    // Merge into general cheat reports:
+    const savedReports = JSON.parse(localStorage.getItem("global_cheat_reports") || "[]");
+    const newReport = {
+      id: `cheat-${Date.now()}`,
+      reporter: currentUser.username,
+      target: targetCreator,
+      surveyId: stopSurveyId,
+      surveyTitle: qObj?.title || stopSurveyId,
+      reason: `【檢舉問卷停用申請】問卷 ID: ${stopSurveyId} (標題: ${qObj?.title || "未知"}), 理由：${stopReason.trim()}`,
+      status: "PENDING",
+      createdAt: new Date().toISOString().replace("T", " ").substring(0, 19),
+      type: "STOP_SURVEY"
+    };
+    savedReports.push(newReport);
+    localStorage.setItem("global_cheat_reports", JSON.stringify(savedReports));
+    setCheatReports(savedReports);
+
     addLog(
       "提請管理員封禁停用問卷",
       stopSurveyId,
-      `答題人提請停用問卷 [${stopSurveyId}]，理由：${stopReason.trim()}`
+      `答題人提請停用問卷 [${stopSurveyId}]，並已同步提報至開掛/作弊與違規審查中心，理由：${stopReason.trim()}`
     );
 
-    alert("🎉 停用申請提報成功！管理員與系統站主將會收到此高權限警訊並優先審查此問卷！");
+    alert("🎉 停用與檢舉申請提報成功！已同步合併至【開掛/作弊嫌疑檢舉審查中心】，管理員或站主將優先進行審查。");
     setStopReason("");
     setShowStopModal(false);
   };
@@ -1216,19 +1237,33 @@ export default function Dashboard({
       const storedUsers = localStorage.getItem("sub_users");
       if (storedUsers) {
         const uList = JSON.parse(storedUsers);
+        
+        // Ban the target user if they exist
         if (uList[repObj.target]) {
           uList[repObj.target].banned = true;
           uList[repObj.target].bannedBy = currentUser.role;
+          uList[repObj.target].bannedReason = "CHEAT";
           localStorage.setItem("sub_users", JSON.stringify(uList));
           setRbacUsers(uList);
-
-          addLog(
-            "封禁涉嫌開掛人員",
-            repObj.target,
-            `管理員審核 ${repObj.reporter} 的舉報案件：證實開掛，對「${repObj.target}」實施永久系統停用封鎖！`
-          );
-          alert(`🎉 證實開掛，已成功將帳號「${repObj.target}」永久封禁註銷！`);
         }
+
+        // If the report was a STOP_SURVEY or has an associated surveyId, deactivate the questionnaire too!
+        if (repObj.surveyId) {
+          const updatedQ = questionnaires.map(q => {
+            if (q.id === repObj.surveyId) {
+              return { ...q, isActive: false };
+            }
+            return q;
+          });
+          onUpdateQuestionnaires(updatedQ);
+        }
+
+        addLog(
+          "證實嫌疑並實施封禁",
+          repObj.target,
+          `管理員審核 ${repObj.reporter} 的檢舉/停用案件：證實違規嫌疑，對涉嫌人「${repObj.target}」實施永久系統停用封鎖！${repObj.surveyId ? `關聯問卷 [${repObj.surveyId}] 已同步停用。` : ""}`
+        );
+        alert(`🎉 已成功將帳號「${repObj.target}」永久封禁停用，目前無法登入系統！${repObj.surveyId ? `且其關聯問卷「${repObj.surveyTitle || repObj.surveyId}」已被同步停用關閉！` : ""}`);
       }
       repObj.status = "APPROVED_BAN";
     } else {
@@ -1730,8 +1765,14 @@ export default function Dashboard({
     uList[targetUser].banned = !currentBanState;
     if (uList[targetUser].banned) {
       uList[targetUser].bannedBy = currentUser.role;
+      if (uList[targetUser].role === UserRole.QUESTION_CREATOR) {
+        uList[targetUser].bannedReason = "SURVEY_ISSUE";
+      } else {
+        uList[targetUser].bannedReason = "CHEAT";
+      }
     } else {
       delete uList[targetUser].bannedBy;
+      delete uList[targetUser].bannedReason;
     }
 
     localStorage.setItem("sub_users", JSON.stringify(uList));
@@ -1858,6 +1899,35 @@ export default function Dashboard({
       `系統站主調整【${targetUsername}】的認證星階為 ${newStar} 星，最多指派問卷上限設為 ${newStar}。`
     );
     alert(`🎉 帳號【${targetUsername}】已成功調整為 ${newStar} 星！`);
+  };
+
+  const handleUpdateRespondentPoints = (targetUsername: string, points: number) => {
+    const uList = { ...rbacUsers };
+    if (!uList[targetUsername]) return;
+
+    uList[targetUsername].respondentPoints = points;
+    const rankInfo = calculateRespondentRank(points);
+    uList[targetUsername].starLevel = rankInfo.tier;
+
+    localStorage.setItem("sub_users", JSON.stringify(uList));
+    setRbacUsers(uList);
+
+    if (targetUsername === currentUser.username) {
+      const updated = { 
+        ...currentUser, 
+        respondentPoints: points, 
+        starLevel: rankInfo.tier as StarLevel 
+      };
+      onUpdateCurrentUser(updated);
+      localStorage.setItem("sub_logged_user", JSON.stringify(updated));
+    }
+
+    addLog(
+      "站主調整答題人積分等階",
+      `積分調整：${targetUsername}`,
+      `系統站主將答題人【${targetUsername}】的積分調升至 ${points} 點，使其等階躍升為【${rankInfo.tierName} (${rankInfo.subRank})】。`
+    );
+    alert(`🎉 答題人【${targetUsername}】已儲存調整！\n等階目前為：${rankInfo.tierName} (${rankInfo.subRank})，當前積分：${points} 分！`);
   };
 
   const handleToggleUserTable = (targetUsername: string, surveyId: string) => {
@@ -2781,7 +2851,7 @@ export default function Dashboard({
                 <div>
                   <h3 className="text-md font-bold text-slate-800 flex items-center space-x-1.5 border-b border-slate-100 pb-3">
                     <Trophy className="w-5 h-5 text-amber-500" />
-                    <span>答題學知識：關卡闖關挑戰 (答對: +20點)</span>
+                    <span>答題學知識：關卡闖關挑戰 (答對: +7點)</span>
                   </h3>
                 </div>
 
@@ -2837,7 +2907,7 @@ export default function Dashboard({
                         <div>
                           {triviaIsCorrect === true && (
                             <div className="text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl text-xs font-bold animate-pulse flex items-center space-x-1.5">
-                              <span>✅ 答對了！恭喜增加 20 點積分！</span>
+                              <span>✅ 答對了！恭喜增加 7 點積分！</span>
                             </div>
                           )}
                           {triviaIsCorrect === false && (
@@ -4975,7 +5045,11 @@ export default function Dashboard({
                         </div>
                       </div>
 
-                      {rbacUsers[rbacSelectedUser].role !== UserRole.SYSTEM_ADMIN && rbacUsers[rbacSelectedUser].role !== UserRole.SUPER_ADMIN && rbacUsers[rbacSelectedUser].role !== UserRole.WEBMASTER ? (
+                      {rbacUsers[rbacSelectedUser].role === UserRole.RESPONDENT || rbacUsers[rbacSelectedUser].role === UserRole.QUESTION_CREATOR ? (
+                        <div className="p-3 bg-indigo-50/70 text-indigo-950 font-bold rounded-lg border border-indigo-150 text-[11px]">
+                          ⚙️ 答題人與出題人獨立於管理員之日常星階設定。答題人等階與積分升職請至本頁上方【系統帳號全權管理控制中心】清單由站主直接選取調升；出題人享有專屬題庫擴充特權控制，無常規問卷分指星等設定。
+                        </div>
+                      ) : rbacUsers[rbacSelectedUser].role !== UserRole.SYSTEM_ADMIN && rbacUsers[rbacSelectedUser].role !== UserRole.SUPER_ADMIN && rbacUsers[rbacSelectedUser].role !== UserRole.WEBMASTER ? (
                         <>
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-semibold text-slate-500 block">核發星階設定</label>
@@ -5532,7 +5606,7 @@ export default function Dashboard({
               )}
 
               {/* Status metrics grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex flex-col justify-center">
                   <span className="text-[10px] font-bold text-slate-400 block">總系統帳號</span>
                   <span className="text-xl font-black font-mono text-slate-800">{Object.keys(rbacUsers).length} <span className="text-xs font-normal text-slate-400">名</span></span>
@@ -5540,7 +5614,7 @@ export default function Dashboard({
                 <div className="bg-sky-50/55 p-3 rounded-2xl border border-sky-100 flex flex-col justify-center">
                   <span className="text-[10px] font-bold text-sky-800/80 block">超級/系統管理員</span>
                   <span className="text-xl font-black font-mono text-sky-900">
-                    {Object.values(rbacUsers).filter((u: any) => u?.role === UserRole.SUPER_ADMIN || u?.role === UserRole.SYSTEM_ADMIN).length} <span className="text-xs font-normal text-sky-400">名</span>
+                    {Object.values(rbacUsers).filter((u: any) => u?.role === UserRole.SUPER_ADMIN || u?.role === UserRole.SYSTEM_ADMIN || u?.role === UserRole.WEBMASTER).length} <span className="text-xs font-normal text-sky-400">名</span>
                   </span>
                 </div>
                 <div className="bg-amber-50/55 p-3 rounded-2xl border border-amber-100 flex flex-col justify-center">
@@ -5553,6 +5627,18 @@ export default function Dashboard({
                   <span className="text-[10px] font-bold text-indigo-800/80 block">分析員成員</span>
                   <span className="text-xl font-black font-mono text-indigo-900">
                     {Object.values(rbacUsers).filter((u: any) => u?.role === UserRole.ANALYST).length} <span className="text-xs font-normal text-indigo-400">名</span>
+                  </span>
+                </div>
+                <div className="bg-violet-50/55 p-3 rounded-2xl border border-violet-100 flex flex-col justify-center">
+                  <span className="text-[10px] font-bold text-violet-800/80 block">出題人成員</span>
+                  <span className="text-xl font-black font-mono text-violet-900">
+                    {Object.values(rbacUsers).filter((u: any) => u?.role === UserRole.QUESTION_CREATOR).length} <span className="text-xs font-normal text-violet-400">名</span>
+                  </span>
+                </div>
+                <div className="bg-emerald-50/55 p-3 rounded-2xl border border-emerald-100 flex flex-col justify-center">
+                  <span className="text-[10px] font-bold text-emerald-800/80 block">答題人成員</span>
+                  <span className="text-xl font-black font-mono text-emerald-950">
+                    {Object.values(rbacUsers).filter((u: any) => u?.role === UserRole.RESPONDENT).length} <span className="text-xs font-normal text-emerald-600">名</span>
                   </span>
                 </div>
                 <div className="bg-rose-50/55 p-3 rounded-2xl border border-rose-100 flex flex-col justify-center">
@@ -5569,9 +5655,11 @@ export default function Dashboard({
                 <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-xl shrink-0 self-start">
                   {[
                     { id: "ALL", label: "👥 全部" },
-                    { id: "ADMINS", label: "👑 系統管理者" },
+                    { id: "ADMINS", label: "👑 管理者" },
                     { id: "OPERATOR", label: "⚙️ 操作員" },
                     { id: "ANALYST", label: "📈 分析員" },
+                    { id: "CREATOR", label: "✏️ 出題人" },
+                    { id: "RESPONDENT", label: "🎒 答題人" },
                     { id: "BANNED", label: "🔴 已封禁" }
                   ].map((tab) => (
                     <button
@@ -5643,6 +5731,12 @@ export default function Dashboard({
                         }
                         if (sysAccountRoleFilter === "ANALYST") {
                           return uObject.role === UserRole.ANALYST;
+                        }
+                        if (sysAccountRoleFilter === "CREATOR") {
+                          return uObject.role === UserRole.QUESTION_CREATOR;
+                        }
+                        if (sysAccountRoleFilter === "RESPONDENT") {
+                          return uObject.role === UserRole.RESPONDENT;
                         }
                         return true;
                       })
@@ -5842,11 +5936,41 @@ export default function Dashboard({
                                   </div>
                                 </div>
                               ) : uObj.role === UserRole.RESPONDENT ? (
-                                <div className="space-y-1">
+                                <div className="space-y-1.5 text-left">
                                   <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-2 py-0.5 font-bold inline-block">
-                                    ✍️ 答題人獨立分級：不被管理員指派問卷
+                                    ✍️ 答題人：不被管理員指派問卷
                                   </div>
-                                  <p className="text-[9px] text-slate-450 font-medium">系統總計積分：<span className="font-bold text-emerald-600">{uObj.respondentPoints || 0}</span> 分</p>
+                                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center">
+                                    <span className="text-[10px] text-slate-500 font-bold select-none">調升等階:</span>
+                                    <select
+                                      value={calculateRespondentRank(uObj.respondentPoints || 0).tier}
+                                      onChange={(e) => {
+                                        const targetTier = Number(e.target.value);
+                                        let minPoints = 0;
+                                        if (targetTier === 1) minPoints = 0;
+                                        else if (targetTier === 2) minPoints = 180; // Q = 9, 9 * 20 = 180 points
+                                        else if (targetTier === 3) minPoints = 360; // Q = 18, 18 * 20 = 360 points
+                                        else if (targetTier === 4) minPoints = 680; // Q = 34, 34 * 20 = 680 points
+                                        else if (targetTier === 5) minPoints = 1000; // Q = 50, 50 * 20 = 1000 points
+                                        else if (targetTier === 6) minPoints = 1500; // Q = 75, 75 * 20 = 1500 points
+                                        else if (targetTier === 7) minPoints = 2000; // Q = 100, 100 * 20 = 2000 points
+                                        handleUpdateRespondentPoints(uname, minPoints);
+                                      }}
+                                      className="font-mono bg-white border border-slate-150 rounded text-[10px] p-0.5 text-emerald-600 font-bold outline-none cursor-pointer focus:border-emerald-500"
+                                    >
+                                      <option value={1}>黑鐵 (1 階)</option>
+                                      <option value={2}>青銅 (2 階)</option>
+                                      <option value={3}>白銀 (3 階)</option>
+                                      <option value={4}>黃金 (4 階)</option>
+                                      <option value={5}>白金 (5 階)</option>
+                                      <option value={6}>鑽石 (6 階)</option>
+                                      <option value={7}>傳奇 (7 階)</option>
+                                    </select>
+                                    <span className="text-[10px] bg-emerald-50 text-emerald-750 rounded px-1.5 py-0.5 font-semibold">
+                                      {calculateRespondentRank(uObj.respondentPoints || 0).tierName} ({calculateRespondentRank(uObj.respondentPoints || 0).subRank})
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] text-slate-450 font-medium">系統總計積分：<span className="font-bold text-emerald-600 font-mono">{uObj.respondentPoints || 0}</span> 分</p>
                                 </div>
                               ) : (
                                 <div className="text-[11px] text-slate-500 font-bold bg-indigo-50/40 border border-indigo-100 rounded px-2 py-1 inline-block">

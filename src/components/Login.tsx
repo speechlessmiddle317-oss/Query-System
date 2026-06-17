@@ -149,6 +149,14 @@ export default function Login({ onLoginSuccess, addLog }: LoginProps) {
 
     if (userRecord && userRecord.password === password) {
       if (userRecord.banned) {
+        if (userRecord.bannedReason === "SURVEY_ISSUE" || (userRecord.role === UserRole.QUESTION_CREATOR && userRecord.bannedReason !== "CHEAT")) {
+          setError("❌ 您的帳號因問卷問題而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
+          return;
+        }
+        if (userRecord.bannedReason === "CHEAT") {
+          setError("❌ 您的帳號因有開掛/作弊嫌疑而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
+          return;
+        }
         const bannerRole = userRecord.bannedBy || UserRole.WEBMASTER;
         let bannerRoleName = "系統站主";
         if (bannerRole === UserRole.WEBMASTER) {

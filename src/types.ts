@@ -15,7 +15,7 @@ export interface AppUser {
   role: UserRole;
   starLevel?: StarLevel; // Use for 出題人 rank (1,2,3) or 答題人 tier (1..7)
   respondentSubRank?: number; // 1-indexed sub rank within tier (e.g. 1..3 or 1..4 or 1..5)
-  respondentPoints?: number; // Points acquired, 20 points = 1 question
+  respondentPoints?: number; // Points acquired, 7 points = 1 question
   assignedTables?: string[]; // Allowed questionnaire IDs
   passwordChangeApplied?: boolean;
   distributedToAdmins?: boolean;
