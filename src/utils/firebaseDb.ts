@@ -1,4 +1,4 @@
-import { db } from "../lib/firebase";
+import { db, auth } from "../lib/firebase";
 import { 
   collection, 
   doc, 
@@ -10,14 +10,60 @@ import {
 } from "firebase/firestore";
 import { Questionnaire, SurveyResponse, AuditLog, AppUser, PromotionApplication } from "../types";
 
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error("Firestore Error: ", JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 // Helper to check if database has seeded data
 export async function isCollectionEmpty(collectionName: string): Promise<boolean> {
   try {
     const snap = await getDocs(collection(db, collectionName));
     return snap.empty;
   } catch (error) {
-    console.error(`Error checking if ${collectionName} is empty:`, error);
-    return true;
+    handleFirestoreError(error, OperationType.GET, collectionName);
   }
 }
 
@@ -25,13 +71,14 @@ export async function isCollectionEmpty(collectionName: string): Promise<boolean
 export async function saveUserToFirestore(username: string, userData: any): Promise<void> {
   if (!username) return;
   const lowercaseUsername = username.toLowerCase();
+  const path = `users/${lowercaseUsername}`;
   try {
     await setDoc(doc(db, "users", lowercaseUsername), {
       ...userData,
       username: username // preserve capitalization if any
     }, { merge: true });
   } catch (err) {
-    console.error("Error saving user to Firestore:", err);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
@@ -48,7 +95,7 @@ export async function saveAllUsersToFirestore(usersMap: Record<string, any>): Pr
     });
     await batch.commit();
   } catch (err) {
-    console.error("Error saving all users in batch to Firestore:", err);
+    handleFirestoreError(err, OperationType.WRITE, "users");
   }
 }
 
@@ -62,7 +109,7 @@ export async function fetchUsersFromFirestore(): Promise<Record<string, any>> {
       usersMap[rawUsername.toLowerCase()] = data;
     });
   } catch (err) {
-    console.error("Error fetching users from Firestore:", err);
+    handleFirestoreError(err, OperationType.GET, "users");
   }
   return usersMap;
 }
@@ -70,10 +117,11 @@ export async function fetchUsersFromFirestore(): Promise<Record<string, any>> {
 // === QUESTIONNAIRES ===
 export async function saveQuestionnaireToFirestore(q: Questionnaire): Promise<void> {
   if (!q.id) return;
+  const path = `questionnaires/${q.id}`;
   try {
     await setDoc(doc(db, "questionnaires", q.id), q);
   } catch (err) {
-    console.error("Error saving questionnaire:", err);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
@@ -87,7 +135,7 @@ export async function saveAllQuestionnairesToFirestore(qs: Questionnaire[]): Pro
     });
     await batch.commit();
   } catch (err) {
-    console.error("Batch saving questionnaires to Firestore:", err);
+    handleFirestoreError(err, OperationType.WRITE, "questionnaires");
   }
 }
 
@@ -99,26 +147,28 @@ export async function fetchQuestionnairesFromFirestore(): Promise<Questionnaire[
       list.push(document.data() as Questionnaire);
     });
   } catch (err) {
-    console.error("Error fetching questionnaires:", err);
+    handleFirestoreError(err, OperationType.GET, "questionnaires");
   }
   return list;
 }
 
 export async function deleteQuestionnaireFromFirestore(id: string): Promise<void> {
+  const path = `questionnaires/${id}`;
   try {
     await deleteDoc(doc(db, "questionnaires", id));
   } catch (err) {
-    console.error("Error deleting questionnaire:", err);
+    handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
 
 // === RESPONSES ===
 export async function saveResponseToFirestore(r: SurveyResponse): Promise<void> {
   if (!r.id) return;
+  const path = `responses/${r.id}`;
   try {
     await setDoc(doc(db, "responses", r.id), r);
   } catch (err) {
-    console.error("Error saving response:", err);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
@@ -132,7 +182,7 @@ export async function saveAllResponsesToFirestore(rs: SurveyResponse[]): Promise
     });
     await batch.commit();
   } catch (err) {
-    console.error("Batch saving responses:", err);
+    handleFirestoreError(err, OperationType.WRITE, "responses");
   }
 }
 
@@ -144,7 +194,7 @@ export async function fetchResponsesFromFirestore(): Promise<SurveyResponse[]> {
       list.push(document.data() as SurveyResponse);
     });
   } catch (err) {
-    console.error("Error fetching responses:", err);
+    handleFirestoreError(err, OperationType.GET, "responses");
   }
   return list;
 }
@@ -152,10 +202,11 @@ export async function fetchResponsesFromFirestore(): Promise<SurveyResponse[]> {
 // === AUDIT LOGS ===
 export async function saveAuditLogToFirestore(log: AuditLog): Promise<void> {
   if (!log.id) return;
+  const path = `audit_logs/${log.id}`;
   try {
     await setDoc(doc(db, "audit_logs", log.id), log);
   } catch (err) {
-    console.error("Error saving log:", err);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
@@ -169,7 +220,7 @@ export async function saveAllAuditLogsToFirestore(logs: AuditLog[]): Promise<voi
     });
     await batch.commit();
   } catch (err) {
-    console.error("Batch saving audit logs:", err);
+    handleFirestoreError(err, OperationType.WRITE, "audit_logs");
   }
 }
 
@@ -181,7 +232,7 @@ export async function fetchAuditLogsFromFirestore(): Promise<AuditLog[]> {
       list.push(document.data() as AuditLog);
     });
   } catch (err) {
-    console.error("Error fetching audit logs:", err);
+    handleFirestoreError(err, OperationType.GET, "audit_logs");
   }
   return list;
 }
@@ -189,10 +240,11 @@ export async function fetchAuditLogsFromFirestore(): Promise<AuditLog[]> {
 // === PROMOTIONS ===
 export async function savePromotionToFirestore(promo: PromotionApplication): Promise<void> {
   if (!promo.id) return;
+  const path = `promotions/${promo.id}`;
   try {
     await setDoc(doc(db, "promotions", promo.id), promo);
   } catch (err) {
-    console.error("Error saving promotion:", err);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
@@ -206,7 +258,7 @@ export async function saveAllPromotionsToFirestore(promos: PromotionApplication[
     });
     await batch.commit();
   } catch (err) {
-    console.error("Batch saving promotions:", err);
+    handleFirestoreError(err, OperationType.WRITE, "promotions");
   }
 }
 
@@ -218,7 +270,7 @@ export async function fetchPromotionsFromFirestore(): Promise<PromotionApplicati
       list.push(document.data() as PromotionApplication);
     });
   } catch (err) {
-    console.error("Error fetching promotions:", err);
+    handleFirestoreError(err, OperationType.GET, "promotions");
   }
   return list;
 }
@@ -226,10 +278,11 @@ export async function fetchPromotionsFromFirestore(): Promise<PromotionApplicati
 // === CHEAT REPORTS ===
 export async function saveCheatReportToFirestore(report: any): Promise<void> {
   if (!report.id) return;
+  const path = `cheat_reports/${report.id}`;
   try {
     await setDoc(doc(db, "cheat_reports", report.id), report);
   } catch (err) {
-    console.error("Error saving cheat report:", err);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
@@ -243,7 +296,7 @@ export async function saveAllCheatReportsToFirestore(reports: any[]): Promise<vo
     });
     await batch.commit();
   } catch (err) {
-    console.error("Batch saving cheat reports:", err);
+    handleFirestoreError(err, OperationType.WRITE, "cheat_reports");
   }
 }
 
@@ -255,7 +308,7 @@ export async function fetchCheatReportsFromFirestore(): Promise<any[]> {
       list.push(document.data());
     });
   } catch (err) {
-    console.error("Error fetching cheat reports:", err);
+    handleFirestoreError(err, OperationType.GET, "cheat_reports");
   }
   return list;
 }
@@ -263,10 +316,11 @@ export async function fetchCheatReportsFromFirestore(): Promise<any[]> {
 // === QUOTA REQUESTS ===
 export async function saveQuotaRequestToFirestore(req: any): Promise<void> {
   if (!req.id) return;
+  const path = `quota_requests/${req.id}`;
   try {
     await setDoc(doc(db, "quota_requests", req.id), req);
   } catch (err) {
-    console.error("Error saving quota request:", err);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
@@ -280,7 +334,7 @@ export async function saveAllQuotaRequestsToFirestore(requests: any[]): Promise<
     });
     await batch.commit();
   } catch (err) {
-    console.error("Batch saving quota requests:", err);
+    handleFirestoreError(err, OperationType.WRITE, "quota_requests");
   }
 }
 
@@ -292,7 +346,7 @@ export async function fetchQuotaRequestsFromFirestore(): Promise<any[]> {
       list.push(document.data());
     });
   } catch (err) {
-    console.error("Error fetching quota requests:", err);
+    handleFirestoreError(err, OperationType.GET, "quota_requests");
   }
   return list;
 }
@@ -308,7 +362,7 @@ export async function saveAllTriviaQuestionsToFirestore(questions: any[]): Promi
     });
     await batch.commit();
   } catch (err) {
-    console.error("Batch saving trivia questions:", err);
+    handleFirestoreError(err, OperationType.WRITE, "trivia_questions");
   }
 }
 
@@ -320,7 +374,7 @@ export async function fetchTriviaQuestionsFromFirestore(): Promise<any[]> {
       list.push(document.data());
     });
   } catch (err) {
-    console.error("Error fetching trivia questions:", err);
+    handleFirestoreError(err, OperationType.GET, "trivia_questions");
   }
   return list;
 }
