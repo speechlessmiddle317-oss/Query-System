@@ -14,7 +14,7 @@ export default function Login({ onLoginSuccess, addLog }: LoginProps) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [keepLoggedIn, setKeepLoggedIn] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<React.ReactNode>("");
   const [successMsg, setSuccessMsg] = useState("");
 
   // Register state
@@ -153,16 +153,72 @@ export default function Login({ onLoginSuccess, addLog }: LoginProps) {
 
     if (userRecord && userRecord.password === password) {
       if (userRecord.banned) {
-        if (userRecord.bannedReason === "SURVEY_ISSUE") {
-          setError("❌ 您的帳號因問卷問題而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
+        // Resolve expired temporary bans first!
+        if (userRecord.bannedUntil && Date.now() > userRecord.bannedUntil) {
+          userRecord.banned = false;
+          delete userRecord.bannedUntil;
+          delete userRecord.bannedBy;
+          delete userRecord.bannedReason;
+          delete userRecord.banType;
+          usersList[username.trim()] = userRecord;
+          localStorage.setItem("sub_users", JSON.stringify(usersList));
+        } else {
+          if (userRecord.banType === "TEMP_LEGEND" || (userRecord.bannedUntil && Date.now() <= userRecord.bannedUntil && userRecord.bannedBy === UserRole.RESPONDENT)) {
+            setError(
+              <span>
+                ❌ 您的帳號已被<span className="font-extrabold text-[#FF3E00]" style={{ color: '#FF3E00' }}>答題人動用最高特權</span>封禁停用1小時，目前無法登入系統！如要解封，請聯絡上級管理人員或靜靜等待解封。
+              </span>
+            );
+          } else if (userRecord.banType === "PERM_LEGEND") {
+            setError(
+              <span>
+                ❌ 您的帳號已被<span className="font-extrabold text-[#FF3E00]" style={{ color: '#FF3E00' }}>答題人動用最高特權</span>申請封禁永久停用(<span className="font-extrabold text-[#D4AF37]" style={{ color: '#D4AF37' }}>系統站主已同意</span>)，目前無法登入系統！如要解封，請聯絡系統站主進行解除。
+              </span>
+            );
+          } else if (userRecord.banType === "REPORT" && userRecord.role === UserRole.RESPONDENT) {
+            setError("❌ 您的帳號因有開掛/作弊嫌疑而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
+          } else if (userRecord.banType === "REPORT" && userRecord.role === UserRole.QUESTION_CREATOR) {
+            setError("❌ 您的帳號因問卷問題而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
+          } else if (userRecord.banType === "MANUAL" && userRecord.bannedBy === UserRole.WEBMASTER) {
+            setError(
+              <span>
+                ❌ 您的帳號已被<span className="font-extrabold text-[#D4AF37]" style={{ color: '#D4AF37' }}>系統站主</span>封禁停用，目前無法登入系統！如有疑問請聯絡上級管理人員。
+              </span>
+            );
+          } else if (userRecord.banType === "MANUAL" && userRecord.bannedBy === UserRole.SUPER_ADMIN) {
+            setError(
+              <span>
+                ❌ 您的帳號已被<span className="font-extrabold text-blue-600" style={{ color: '#2563EB' }}>超級管理員</span>封禁停用，目前無法登入系統！如有疑問請聯絡上級管理人員。
+              </span>
+            );
+          } else {
+            // Robust fallbacks for older entries
+            if (userRecord.bannedBy === UserRole.WEBMASTER) {
+              setError(
+                <span>
+                  ❌ 您的帳號已被<span className="font-extrabold text-[#D4AF37]" style={{ color: '#D4AF37' }}>系統站主</span>封禁停用，目前無法登入系統！如有疑問請聯絡上級管理人員。
+                </span>
+              );
+            } else if (userRecord.bannedBy === UserRole.SUPER_ADMIN) {
+              setError(
+                <span>
+                  ❌ 您的帳號已被<span className="font-extrabold text-blue-600" style={{ color: '#2563EB' }}>超級管理員</span>封禁停用，目前無法登入系統！如有疑問請聯絡上級管理人員。
+                </span>
+              );
+            } else if (userRecord.bannedBy === UserRole.RESPONDENT) {
+              setError(
+                <span>
+                  ❌ 您的帳號已被<span className="font-extrabold text-[#FF3E00]" style={{ color: '#FF3E00' }}>答題人動用最高特權</span>封禁停用1小時，目前無法登入系統！如要解封，請聯絡上級管理人員或靜靜等待解封。
+                </span>
+              );
+            } else if (userRecord.bannedReason === "SURVEY_ISSUE") {
+              setError("❌ 您的帳號因問卷問題而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
+            } else {
+              setError("❌ 您的帳號因有開掛/作弊嫌疑而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
+            }
+          }
           return;
         }
-        if (userRecord.bannedReason === "CHEAT") {
-          setError("❌ 您的帳號因有開掛/作弊嫌疑而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
-          return;
-        }
-        setError('❌ 您的帳號已被"使用封禁權限的帳號權限分級"封禁停用，目前無法登入系統！如有疑問請聯絡上級管理人員。');
-        return;
       }
 
       const appUser: AppUser = {
@@ -214,8 +270,14 @@ export default function Login({ onLoginSuccess, addLog }: LoginProps) {
         <div className="px-8 pt-6">
           {error && (
             <div className="p-4 bg-rose-50 border-l-4 border-rose-500 rounded-lg text-rose-700 text-xs flex items-start space-x-2 animate-pulse">
-              <span className="font-bold shrink-0">❌ 錯誤：</span>
-              <span>{error}</span>
+              {typeof error === "string" && !error.startsWith("❌") ? (
+                <>
+                  <span className="font-bold shrink-0">❌ 錯誤：</span>
+                  <span>{error}</span>
+                </>
+              ) : (
+                <span>{error}</span>
+              )}
             </div>
           )}
 

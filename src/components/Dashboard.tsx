@@ -322,6 +322,7 @@ export default function Dashboard({
 
   // Cheat Reporting States
   const [showCheatReportModal, setShowCheatReportModal] = useState(false);
+  const [showPrivilegeDescModal, setShowPrivilegeDescModal] = useState(false);
   const [cheatReportTarget, setCheatReportTarget] = useState("");
   const [cheatReportReason, setCheatReportReason] = useState("");
   const [cheatReports, setCheatReports] = useState<any[]>([]);
@@ -1158,6 +1159,7 @@ export default function Dashboard({
     uList[target].bannedBy = currentUser.role;
     uList[target].bannedReason = "CHEAT";
     uList[target].bannedUntil = Date.now() + 3600 * 1000;
+    uList[target].banType = "TEMP_LEGEND";
 
     // Increment self monthly quota count
     uList[currentUser.username].bannedOtherAppliedThisMonthCount = currentBanAppliedCount + 1;
@@ -1397,6 +1399,7 @@ export default function Dashboard({
         uList[creatorUsername].banned = true;
         uList[creatorUsername].bannedBy = currentUser.role;
         uList[creatorUsername].bannedReason = "SURVEY_ISSUE";
+        uList[creatorUsername].banType = "REPORT";
         localStorage.setItem("sub_users", JSON.stringify(uList));
         setRbacUsers(uList);
       }
@@ -1425,6 +1428,11 @@ export default function Dashboard({
           uList[repObj.target].banned = true;
           uList[repObj.target].bannedBy = currentUser.role;
           uList[repObj.target].bannedReason = "CHEAT";
+          if (repObj.type === "LEGEND_TEMP_BAN") {
+            uList[repObj.target].banType = "PERM_LEGEND";
+          } else {
+            uList[repObj.target].banType = "REPORT";
+          }
           localStorage.setItem("sub_users", JSON.stringify(uList));
           setRbacUsers(uList);
         }
@@ -1947,6 +1955,7 @@ export default function Dashboard({
     uList[targetUser].banned = !currentBanState;
     if (uList[targetUser].banned) {
       uList[targetUser].bannedBy = currentUser.role;
+      uList[targetUser].banType = "MANUAL";
       if (uList[targetUser].role === UserRole.QUESTION_CREATOR) {
         uList[targetUser].bannedReason = "SURVEY_ISSUE";
       } else {
@@ -1955,6 +1964,7 @@ export default function Dashboard({
     } else {
       delete uList[targetUser].bannedBy;
       delete uList[targetUser].bannedReason;
+      delete uList[targetUser].banType;
     }
 
     localStorage.setItem("sub_users", JSON.stringify(uList));
@@ -3316,6 +3326,129 @@ export default function Dashboard({
               </div>
 
               {/* MODALS RENDERING START */}
+              {/* Modal: Privilege Hierarchy Description */}
+              {showPrivilegeDescModal && (
+                <div id="privilege-desc-modal" className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                  <div className="bg-white rounded-2xl w-full max-w-2xl p-6 border border-slate-100 shadow-2xl space-y-4 text-left max-h-[85vh] overflow-y-auto animate-fade-in font-sans">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                      <h4 className="text-base font-extrabold text-slate-800 flex items-center space-x-2">
+                        <span className="text-indigo-600 text-lg">🔑</span>
+                        <span>系統帳戶權限分級與星級權益說明書</span>
+                      </h4>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowPrivilegeDescModal(false)} 
+                        className="text-slate-400 hover:text-slate-600 font-bold text-xs select-none cursor-pointer w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
+                      <p className="text-slate-400 text-[10px]">
+                        本平台採用精密的角色型存取控制 (RBAC) 搭配動態等階/星級縮放賦權。您可以點選下方各類角色，或滾動詳閱每種身分與星階對應之專屬權限：
+                      </p>
+
+                      {/* Webmaster & Super Admin */}
+                      <div className="bg-gradient-to-r from-amber-500/5 to-amber-600/5 p-4 rounded-xl border border-amber-200/50 space-y-2">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-amber-600 text-sm">👑</span>
+                          <span className="font-extrabold text-slate-800 text-xs text-[#D4AF37]">系統最頂階：系統站主 (WEBMASTER) ＆ ⭐ 超級管理員</span>
+                        </div>
+                        <p className="text-slate-500 text-xs">
+                          <strong>系統站主 (Webmaster)</strong> 為全域終極主控帳號，擁有系統不受限最高裁決權，包含：帳號一鍵啟用、手動封鎖與解除封禁、全系統權限分等微調。同理，支援審查答題市民與出題人的「申訴與開掛檢舉審查」並進行永久封禁，並核准 7階 傳奇市民的額度增提特別申請。
+                        </p>
+                        <p className="text-slate-500 text-xs mt-1">
+                          <strong>超級管理員 (Super Admin)</strong> 具備次高階網頁主控級管理權力，可調研全域系統日誌、管理 RBAC 除站主外的所有人員，調整帳號姓名名稱與密碼，並手動執行常規封鎖或解除限制。
+                        </p>
+                      </div>
+
+                      {/* General Admin & Staff */}
+                      <div className="bg-slate-100/60 p-4 rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-indigo-600 text-sm">🛡️</span>
+                          <span className="font-extrabold text-slate-800 text-xs">中階管理層：系統管理員、分析人員、操作人員</span>
+                        </div>
+                        <ul className="list-disc pl-4 space-y-1 text-slate-500 text-xs">
+                          <li><strong>系統管理員 (System Admin)</strong>：負責問卷發布配發。擁有全域未受管之問卷之 100% 查看與資料統計權限，不受分發限缩。</li>
+                          <li><strong>操作人員 (Operator)</strong> & <strong>分析人員 (Analyst)</strong>：支援星級分類 (1⭐ ~ 3⭐)，依階級執行日常問卷上下架、簡易流程流轉與常規報表數據統計。</li>
+                        </ul>
+                      </div>
+
+                      {/* Creator star divisions */}
+                      <div className="bg-indigo-50/40 p-4 rounded-xl border border-indigo-150 space-y-2">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-indigo-700 text-sm">📝</span>
+                          <span className="font-extrabold text-slate-800 text-xs">出題人員 (QUESTION_CREATOR) 等階與星級分配</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+                          <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-left">
+                            <span className="font-extrabold text-slate-700 block text-xs">⭐ 1 階 (限制級出題)</span>
+                            <span className="text-[10px] text-slate-400 font-medium">僅可發布最普通的一般問卷，不能設定問卷的任何時效和進階時間限制。</span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-left">
+                            <span className="font-extrabold text-[#E6A23C] block text-xs">⭐⭐ 2 階 (中等權限出題)</span>
+                            <span className="text-[10px] text-slate-400 font-medium">可建立限制性質問卷，額外解鎖設定問卷開放之「開始時間限制 (startTime)」控制特權。</span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-lg border border-indigo-200 text-left">
+                            <span className="font-extrabold text-indigo-700 block text-xs">⭐⭐⭐ 3 階 (最高解鎖出題)</span>
+                            <span className="text-[10px] text-indigo-500 font-medium">解鎖全功能問卷控制，包含可任意定時、置頂、調整與配發任意填選市民。</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Respondent privilege divisions */}
+                      <div className="bg-emerald-50/30 p-4 rounded-xl border border-emerald-150 space-y-2">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-emerald-700 text-sm">🏆</span>
+                          <span className="font-extrabold text-slate-800 text-xs">答題市民 (RESPONDENT) 1~7 階特權體系</span>
+                        </div>
+                        <div className="space-y-1.5 text-slate-500 text-xs">
+                          <p>
+                            答題市民透過大量自主填答與完成趣味問答（Trivia）累積積分。隨之晉升，解鎖完全不同的神聖特權：
+                          </p>
+                          <div className="space-y-2 pt-1 font-mono text-xs">
+                            <div className="flex items-start space-x-2">
+                              <span className="font-bold text-slate-705 shrink-0">1 ~ 2 階：</span>
+                              <span>普通市民，享有標準 1x 及 1.2x 答題積分回饋與日常市民答題權。</span>
+                            </div>
+                            <div className="flex items-start space-x-2">
+                              <span className="font-bold text-slate-705 shrink-0">3 ~ 4 階：</span>
+                              <span>白銀市民，享有最高 1.5x 積分高加成，並獲取好友直升提拔之保薦引介權。</span>
+                            </div>
+                            <div className="flex items-start space-x-2">
+                              <span className="font-bold text-indigo-700 shrink-0">5 ~ 6 階：</span>
+                              <span>白金市民，解鎖每週向站主提起 5階 (白金) 直升提拔好友之特別引薦特櫂。</span>
+                            </div>
+                            <div className="flex items-start space-x-2 bg-gradient-to-r from-red-500/10 to-amber-500/10 p-2.5 rounded-xl border border-red-200">
+                              <span className="font-extrabold text-red-650 shrink-0">🔴 7 階 (傳奇市民)：</span>
+                              <div className="space-y-1 text-slate-700 text-[11px] font-sans">
+                                <p className="font-bold text-red-700">具備至高無上神聖特權，可直接發動以下神聖干預：</p>
+                                <ul className="list-disc pl-4 space-y-0.5">
+                                  <li><strong>每月保薦提拔好友</strong>：每月 15 次將朋友帳號強制直接直升至 3階 (白銀)；每週 2 次直接提拔至 5階 (白金)！</li>
+                                  <li><strong>神聖干預 (1小時強制臨時封鎖)</strong>：每月 4 次可直接將任何涉嫌作弊的、開掛的疑似市民帳戶<strong>直接臨時封禁 1 小時</strong>，並將裁決直接通報提送至系統站主的審查中心！</li>
+                                  <li><strong>特權額度增補</strong>：每週可透過專屬表單，向最高系統站主申報，申請增補當月的特權使用次數與信用配額。</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 flex justify-end">
+                      <button 
+                        type="button" 
+                        onClick={() => setShowPrivilegeDescModal(false)} 
+                        className="px-5 py-2 bg-slate-900 border border-slate-950 text-white font-extrabold text-xs rounded-xl hover:bg-slate-800 transition cursor-pointer select-none"
+                      >
+                        我已瞭解並同意此權限架構
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Modal 1: Create Dispute */}
               {showDisputeModal && (
                 <div id="dispute-modal" className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -5636,9 +5769,18 @@ export default function Dashboard({
                     <label className="text-xs font-bold text-slate-500">
                       當前帳號名稱: <span className="text-indigo-600 underline font-mono select-all ml-1.5">{currentUser.username}</span>
                     </label>
-                    <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl text-slate-600 font-mono text-xs flex justify-between items-center select-none">
-                      <span>此帳戶後台權限：</span>
-                      <span className="text-indigo-700 bg-indigo-50 border border-indigo-200 font-bold font-sans rounded px-2.5 py-0.5 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setShowPrivilegeDescModal(true)}
+                      className="w-full text-left bg-slate-50 hover:bg-slate-100 hover:border-slate-300 active:bg-slate-200 border border-slate-150 p-2.5 rounded-xl text-slate-600 font-mono text-xs flex justify-between items-center transition-all cursor-pointer group"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        🔑 <span>此帳戶後台權限</span>
+                        <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded cursor-pointer group-hover:scale-105 transition-all">
+                          [點選: 權限分級 💡]
+                        </span>
+                      </span>
+                      <span className="text-indigo-700 bg-indigo-50 border border-indigo-200 font-bold font-sans rounded px-2.5 py-0.5 text-[10px] group-hover:bg-indigo-100 transition-colors">
                         {currentUser.role === UserRole.WEBMASTER && "👑 系統站主"}
                         {currentUser.role === UserRole.SUPER_ADMIN && "⭐ 超級管理員"}
                         {currentUser.role === UserRole.SYSTEM_ADMIN && "系統管理員"}
@@ -5647,7 +5789,7 @@ export default function Dashboard({
                         {currentUser.role === UserRole.QUESTION_CREATOR && "出題人員"}
                         {currentUser.role === UserRole.RESPONDENT && "答題人員"}
                       </span>
-                    </div>
+                    </button>
                   </div>
 
                   <div className="space-y-1.5">
