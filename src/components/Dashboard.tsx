@@ -313,6 +313,12 @@ export default function Dashboard({
   const [banReqTarget, setBanReqTarget] = useState("");
   const [banReqReason, setBanReqReason] = useState("");
 
+  // Quota addition request states (Tier 7+)
+  const [quotaRequests, setQuotaRequests] = useState<any[]>([]);
+  const [showQuotaRequestModal, setShowQuotaRequestModal] = useState(false);
+  const [quotaPerkType, setQuotaPerkType] = useState<"T3" | "T5" | "BAN_OTHER">("T3");
+  const [quotaRequestCount, setQuotaRequestCount] = useState(5);
+
   // Cheat Reporting States
   const [showCheatReportModal, setShowCheatReportModal] = useState(false);
   const [cheatReportTarget, setCheatReportTarget] = useState("");
@@ -460,6 +466,13 @@ export default function Dashboard({
       setCheatReports(JSON.parse(saved));
     } else {
       setCheatReports([]);
+    }
+
+    const savedQuotas = localStorage.getItem("global_quota_requests");
+    if (savedQuotas) {
+      setQuotaRequests(JSON.parse(savedQuotas));
+    } else {
+      setQuotaRequests([]);
     }
   }, []);
 
@@ -881,7 +894,7 @@ export default function Dashboard({
 
     if (promoFriendType === "T3") {
       // Direct silver promotion (starts at 360 points = 18 questions = Silver IV)
-      const maxQuota = selfRank.tier === 7 ? 15 : 4;
+      const maxQuota = (selfRank.tier === 7 ? 15 : 4) + (currentUser.extraT3Quota || 0);
       const currentPromoCount = currentUser.promotedFriendsThisMonthCount_T3 || 0;
       
       if (currentPromoCount >= maxQuota) {
@@ -921,8 +934,9 @@ export default function Dashboard({
       }
       
       const currentPromoWeekCount = currentUser.promotedFriendsThisWeekCount_T5 || 0;
-      if (currentPromoWeekCount >= 2) {
-        alert("⚠️ 您本週的 5 階 (白金) 晉升極致額度 (2 次) 已經額滿囉！");
+      const maxWeekQuota = 2 + (currentUser.extraT5Quota || 0);
+      if (currentPromoWeekCount >= maxWeekQuota) {
+        alert(`⚠️ 您本週的 5 階 (白金) 晉升極致額度 (${maxWeekQuota} 次) 已經額滿囉！`);
         return;
       }
 
@@ -1125,8 +1139,9 @@ export default function Dashboard({
     }
 
     const currentBanAppliedCount = currentUser.bannedOtherAppliedThisMonthCount || 0;
-    if (currentBanAppliedCount >= 4) {
-      alert("⚠️ 您本月的封鎖舉報額度已達上限（每月最多 4 次）！");
+    const maxBanQuota = 4 + (currentUser.extraBanQuota || 0);
+    if (currentBanAppliedCount >= maxBanQuota) {
+      alert(`⚠️ 您本月的封鎖舉報額度已達上限（每月最多 ${maxBanQuota} 次）！`);
       return;
     }
 
@@ -1138,20 +1153,29 @@ export default function Dashboard({
       return;
     }
 
-    // Save self quota count increment
+    // Immediately temporary ban the target user for 1 hour (3600 seconds)
+    uList[target].banned = true;
+    uList[target].bannedBy = currentUser.role;
+    uList[target].bannedReason = "CHEAT";
+    uList[target].bannedUntil = Date.now() + 3600 * 1000;
+
+    // Increment self monthly quota count
     uList[currentUser.username].bannedOtherAppliedThisMonthCount = currentBanAppliedCount + 1;
     
-    // Save request to global request registry for admin attention
-    const banReqs = JSON.parse(localStorage.getItem("global_ban_requests") || "[]");
-    banReqs.push({
-      id: `banreq-${Date.now()}`,
-      requester: currentUser.username,
+    // Save to global cheat reports instead as a deep gold-red request (visible only to Webmaster)
+    const savedReports = JSON.parse(localStorage.getItem("global_cheat_reports") || "[]");
+    const newReport = {
+      id: `cheat-${Date.now()}`,
+      reporter: currentUser.username,
       target: target,
-      reason: banReqReason.trim(),
+      reason: `【傳奇市民特權 - 臨時封鎖啟動】涉嫌人「${target}」（已被 7 階傳奇答題市民強制臨時封鎖 1 小時！請系統站主審查是否永久終身封鎖）。事由：${banReqReason.trim()}`,
       status: "PENDING",
-      createdAt: new Date().toISOString().replace("T", " ").substring(0, 19)
-    });
-    localStorage.setItem("global_ban_requests", JSON.stringify(banReqs));
+      createdAt: new Date().toISOString().replace("T", " ").substring(0, 19),
+      type: "LEGEND_TEMP_BAN"
+    };
+    savedReports.push(newReport);
+    localStorage.setItem("global_cheat_reports", JSON.stringify(savedReports));
+    setCheatReports(savedReports);
 
     localStorage.setItem("sub_users", JSON.stringify(uList));
     setRbacUsers(uList);
@@ -1164,15 +1188,126 @@ export default function Dashboard({
     }
 
     addLog(
-      "特權：向站主提請封其帳號",
+      "特權：強制臨時封鎖1小時並提報",
       target,
-      `傳奇級答題人舉報並請求封鎖帳號 [${target}]。本月累計次數: ${currentBanAppliedCount + 1}/4`
+      `傳奇級答題人啟動神聖干預，直接對帳號 [${target}] 強制實施 1 小時臨時封鎖，並提交站主特權裁決申請。當月使用次數: ${currentBanAppliedCount + 1}/${maxBanQuota}`
     );
 
-    alert(`🎉 帳號舉報成功！站主已接獲名為「${target}」的危害警舉通報（剩餘額度: ${3 - currentBanAppliedCount} 次）。`);
+    alert(`🎉 傳奇神威顯赫！已成功對違規帳號「${target}」實施立竿見影的 1 小時臨時封禁！並已將完全金紅色的特權裁決通報發送至系統站主的審查中心（剩餘特權額度: ${maxBanQuota - (currentBanAppliedCount + 1)} 次）。`);
     setBanReqTarget("");
     setBanReqReason("");
     setShowBanRequestModal(false);
+  };
+
+  // Submit privilege quota requests (Tier 7+)
+  const handleQuotaRequestSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    let perkName = "";
+    if (quotaPerkType === "T3") perkName = "3階 (白銀) 朋友直接晉升額度";
+    else if (quotaPerkType === "T5") perkName = "5階 (白金) 朋友直接晉升額度";
+    else if (quotaPerkType === "BAN_OTHER") perkName = "強制臨時封鎖違規帳戶額度";
+
+    const newReq = {
+      id: `quota-${Date.now()}`,
+      requester: currentUser.username,
+      perkType: quotaPerkType,
+      perkName: perkName,
+      requestedCount: quotaRequestCount,
+      status: "PENDING",
+      createdAt: new Date().toISOString().replace("T", " ").substring(0, 19)
+    };
+
+    const list = JSON.parse(localStorage.getItem("global_quota_requests") || "[]");
+    list.push(newReq);
+    localStorage.setItem("global_quota_requests", JSON.stringify(list));
+    setQuotaRequests(list);
+
+    addLog(
+      "申請追加特權次數",
+      currentUser.username,
+      `7階傳奇市民申請將【${perkName}】特權額度，額外加碼 ${quotaRequestCount} 次。`
+    );
+
+    alert(`🎉 申請已送出！藍綠色的特權加碼申請已提報至站主控制中心的答題人分類上方，請靜候站主核准審派！`);
+    setShowQuotaRequestModal(false);
+  };
+
+  const handleApproveQuotaRequest = (req: any) => {
+    const savedQuotas = localStorage.getItem("global_quota_requests");
+    if (!savedQuotas) return;
+    let qList = JSON.parse(savedQuotas);
+    const reqObj = qList.find((r: any) => r.id === req.id);
+    if (!reqObj) return;
+
+    const storedUsers = localStorage.getItem("sub_users");
+    if (storedUsers) {
+      const uList = JSON.parse(storedUsers);
+      const rUser = uList[req.requester];
+      if (rUser) {
+        if (req.perkType === "T3") {
+          rUser.extraT3Quota = (rUser.extraT3Quota || 0) + req.requestedCount;
+        } else if (req.perkType === "T5") {
+          rUser.extraT5Quota = (rUser.extraT5Quota || 0) + req.requestedCount;
+        } else if (req.perkType === "BAN_OTHER") {
+          rUser.extraBanQuota = (rUser.extraBanQuota || 0) + req.requestedCount;
+        }
+        localStorage.setItem("sub_users", JSON.stringify(uList));
+        setRbacUsers(uList);
+
+        // If the approved requester is current user, update current user too!
+        if (req.requester === currentUser.username) {
+          if (onUpdateCurrentUser) {
+            onUpdateCurrentUser({
+              ...currentUser,
+              extraT3Quota: rUser.extraT3Quota,
+              extraT5Quota: rUser.extraT5Quota,
+              extraBanQuota: rUser.extraBanQuota
+            });
+            // Update logged user in local storage to prevent staled session info
+            const storedLogged = localStorage.getItem("sub_logged_user");
+            if (storedLogged) {
+              const parsedLogged = JSON.parse(storedLogged);
+              parsedLogged.extraT3Quota = rUser.extraT3Quota;
+              parsedLogged.extraT5Quota = rUser.extraT5Quota;
+              parsedLogged.extraBanQuota = rUser.extraBanQuota;
+              localStorage.setItem("sub_logged_user", JSON.stringify(parsedLogged));
+            }
+          }
+        }
+      }
+    }
+
+    reqObj.status = "APPROVED";
+    localStorage.setItem("global_quota_requests", JSON.stringify(qList));
+    setQuotaRequests(qList);
+
+    addLog(
+      "核准特權加碼",
+      req.requester,
+      `系統站主批准了傳奇市民 ${req.requester} 的特權加碼申請，成功為其額外加碼 ${req.requestedCount} 次【${req.perkName}】。`
+    );
+
+    alert(`🎉 已成功批准 ${req.requester} 的加碼申請！已順利加派其【${req.perkName}】 ${req.requestedCount} 次的額度！`);
+  };
+
+  const handleRejectQuotaRequest = (req: any) => {
+    const savedQuotas = localStorage.getItem("global_quota_requests");
+    if (!savedQuotas) return;
+    let qList = JSON.parse(savedQuotas);
+    const reqObj = qList.find((r: any) => r.id === req.id);
+    if (!reqObj) return;
+
+    reqObj.status = "REJECTED";
+    localStorage.setItem("global_quota_requests", JSON.stringify(qList));
+    setQuotaRequests(qList);
+
+    addLog(
+      "駁回特權加碼",
+      req.requester,
+      `系統站主駁回了傳奇市民 ${req.requester} 申請追加 【${req.perkName}】特權額度的請求。`
+    );
+
+    alert(`已成功駁回這項加碼申請。`);
   };
 
   // Submit cheat suspicion report (Any Respondent)
@@ -1226,18 +1361,65 @@ export default function Dashboard({
   };
 
   // Process cheat suspicion report (Admin/Webmaster)
-  const handleCheatReportAction = (reportId: string, action: "BAN" | "DISMISS") => {
+  const handleCheatReportAction = (reportId: string, action: "BAN" | "DISMISS" | "BLOCK_SURVEY_ONLY" | "BLOCK_CREATOR_AND_ALL_SURVEYS") => {
     const saved = localStorage.getItem("global_cheat_reports");
     if (!saved) return;
     let list = JSON.parse(saved);
     const repObj = list.find((r: any) => r.id === reportId);
     if (!repObj) return;
 
-    if (action === "BAN") {
-      const storedUsers = localStorage.getItem("sub_users");
+    const storedUsers = localStorage.getItem("sub_users");
+    const uList = storedUsers ? JSON.parse(storedUsers) : {};
+
+    if (action === "BLOCK_SURVEY_ONLY") {
+      // Deactivate only the specific questionnaire
+      if (repObj.surveyId) {
+        const updatedQ = questionnaires.map(q => {
+          if (q.id === repObj.surveyId) {
+            return { ...q, isActive: false };
+          }
+          return q;
+        });
+        onUpdateQuestionnaires(updatedQ);
+      }
+      repObj.status = "APPROVED_SURVEY_ONLY_BAN";
+      addLog(
+        "只封鎖該問卷",
+        repObj.target,
+        `管理員核准停用問卷申請：只封鎖停用該項違規問卷 [${repObj.surveyId}]。`
+      );
+      alert(`🎉 處理成功！已成功將問卷「${repObj.surveyTitle || repObj.surveyId}」單獨停用關閉！`);
+    }
+    else if (action === "BLOCK_CREATOR_AND_ALL_SURVEYS") {
+      const creatorUsername = repObj.target;
+      // Ban the creator account with SURVEY_ISSUE
+      if (uList[creatorUsername]) {
+        uList[creatorUsername].banned = true;
+        uList[creatorUsername].bannedBy = currentUser.role;
+        uList[creatorUsername].bannedReason = "SURVEY_ISSUE";
+        localStorage.setItem("sub_users", JSON.stringify(uList));
+        setRbacUsers(uList);
+      }
+
+      // Deactivate all questionnaires created by this user
+      const updatedQ = questionnaires.map(q => {
+        if (q.createdBy === creatorUsername) {
+          return { ...q, isActive: false };
+        }
+        return q;
+      });
+      onUpdateQuestionnaires(updatedQ);
+
+      repObj.status = "APPROVED_CREATOR_AND_SURVEYS_BAN";
+      addLog(
+        "封禁出題人與名下所有問卷",
+        creatorUsername,
+        `管理員核准特權申請：已將出題人「${creatorUsername}」帳號全面封鎖，且名下所有發布問卷一併強制停用關閉！`
+      );
+      alert(`🎉 處理成功！已將出題人「${creatorUsername}」帳號實行封禁停用，其發布的所有問卷已同步全面關閉！`);
+    }
+    else if (action === "BAN") {
       if (storedUsers) {
-        const uList = JSON.parse(storedUsers);
-        
         // Ban the target user if they exist
         if (uList[repObj.target]) {
           uList[repObj.target].banned = true;
@@ -2606,7 +2788,7 @@ export default function Dashboard({
                             <span className="text-[10px] text-slate-400 font-mono block">1階 黑鐵解鎖</span>
                             <span className="text-xs font-extrabold block text-white mt-0.5">🎮 常規自主答題闖關</span>
                             <span className="text-[10px] text-slate-350 leading-tight block mt-1">
-                              可全天候在線進行答題挑戰，答對一律加 20 積分，答錯可重選。
+                              可全天候在線進行答題挑戰，答對一律加 7 積分，答錯可重選。
                             </span>
                           </div>
                           <button
@@ -2689,7 +2871,7 @@ export default function Dashboard({
                         {/* Perk 4 (Tier 4+) */}
                         <div className={`border rounded-xl p-3 flex flex-col justify-between transition-all text-left ${
                           rank.tier >= 4 
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-white" 
+                            ? "bg-emerald-500/10 border-emerald-500/25 text-white" 
                             : "bg-slate-900/40 border-dashed border-white/5 text-slate-500 opacity-50"
                         }`}>
                           <div>
@@ -2755,8 +2937,13 @@ export default function Dashboard({
                             <span className="text-[10px] uppercase font-bold tracking-wider block text-purple-400">6階 鑽石解鎖</span>
                             <span className="text-xs font-extrabold block mt-0.5">⚡ 直接升級朋友白銀 (3階)</span>
                             <span className="text-[10px] leading-tight block mt-1">
-                              每月高達 4 次機會！輸入對方帳號名稱即可強行直升其至 3 階 (白銀)。
+                              每月高達 {4 + (currentUser.extraT3Quota || 0)} 次機會！輸入對方帳號名稱即可強行直升其至 3 階 (白銀)。
                             </span>
+                            {rank.tier >= 6 && (
+                              <p className="text-[9px] text-purple-400 font-mono mt-1">
+                                本月已用: {currentUser.promotedFriendsThisMonthCount_T3 || 0} / {(rank.tier === 7 ? 15 : 4) + (currentUser.extraT3Quota || 0)} 次
+                              </p>
+                            )}
                           </div>
                           {rank.tier >= 6 ? (
                             <button
@@ -2784,8 +2971,14 @@ export default function Dashboard({
                             <span className="text-[10px] uppercase font-bold tracking-wider block text-teal-400">7階 傳奇解鎖</span>
                             <span className="text-xs font-extrabold block mt-0.5">🛡️ 封禁其他帳號/直升白金(5階)</span>
                             <span className="text-[10px] leading-tight block mt-1">
-                              可直升朋友至 5 階 (每週 2 次)，並且可向站主申請直接封禁違規帳戶 (每月 4 次)！
+                              可直升朋友至 5 階 (每週 {2 + (currentUser.extraT5Quota || 0)} 次)，並且可向站主申請直接封禁違規帳戶 (每月 {4 + (currentUser.extraBanQuota || 0)} 次)！
                             </span>
+                            {rank.tier >= 7 && (
+                              <div className="text-[9px] text-teal-400 font-mono mt-1 space-y-0.5">
+                                <p>白金已用 / 額度: {currentUser.promotedFriendsThisWeekCount_T5 || 0} / {2 + (currentUser.extraT5Quota || 0)} 次/每週</p>
+                                <p>封鎖已用 / 額度: {currentUser.bannedOtherAppliedThisMonthCount || 0} / {4 + (currentUser.extraBanQuota || 0)} 次/每月</p>
+                              </div>
+                            )}
                           </div>
                           {rank.tier >= 7 ? (
                             <div className="flex gap-2 mt-3">
@@ -2817,6 +3010,30 @@ export default function Dashboard({
                           )}
                         </div>
                       </div>
+
+                      {/* Tier 7: Request more quota panel */}
+                      {rank.tier >= 7 && (
+                        <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-4 text-left flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden mt-3 animate-fade-in">
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-teal-400 font-mono block">💎 傳奇至尊特權加碼</span>
+                            <span className="text-xs font-extrabold block text-white">向系統站主請求增量特權次數</span>
+                            <p className="text-[10px] text-slate-300 leading-tight">
+                              如您的白銀直升次數、白金直升次數，或臨時封鎖次數已額滿用完，可在此向站主直接申派添加特權額度！
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuotaPerkType("T3");
+                              setQuotaRequestCount(5);
+                              setShowQuotaRequestModal(true);
+                            }}
+                            className="shrink-0 px-4 py-2 bg-gradient-to-r from-teal-400 to-emerald-500 hover:from-teal-500 hover:to-emerald-600 active:from-teal-600 text-slate-950 text-xs font-black rounded-lg shadow-md cursor-pointer transition-all"
+                          >
+                            💎 申請追加特權次數 ➔
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -4754,41 +4971,135 @@ export default function Dashboard({
                 </h3>
 
                 <div className="space-y-2">
-                  {cheatReports.filter(r => r.status === "PENDING").length > 0 ? (
-                    cheatReports.filter(r => r.status === "PENDING").map((rep) => (
-                      <div key={rep.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
-                        <div className="font-mono text-xs text-left">
-                          <p className="text-slate-500">通報時間: {rep.createdAt} | 紀錄ID: {rep.id}</p>
-                          <p className="text-slate-800 font-bold mt-1">
-                            舉報市民: <span className="text-indigo-600 font-extrabold">{rep.reporter}</span>
-                            <span className="mx-2 text-slate-300">➔</span>
-                            被舉報涉嫌人: <span className="text-rose-600 font-extrabold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">{rep.target}</span>
-                          </p>
-                          <p className="text-slate-650 mt-2 bg-slate-50 p-2.5 rounded-lg text-[11px] leading-relaxed italic border border-slate-100">
-                            「 {rep.reason} 」
-                          </p>
-                        </div>
+                  {cheatReports.filter(r => r.status === "PENDING" && (r.type !== "LEGEND_TEMP_BAN" || currentUser.role === UserRole.WEBMASTER)).length > 0 ? (
+                    cheatReports.filter(r => r.status === "PENDING" && (r.type !== "LEGEND_TEMP_BAN" || currentUser.role === UserRole.WEBMASTER)).map((rep) => {
+                      if (rep.type === "LEGEND_TEMP_BAN") {
+                        // Fully golden-red aesthetic block for 1 hour forced temp bans (Webmaster only)
+                        return (
+                          <div key={rep.id} className="relative p-[3px] bg-gradient-to-r from-yellow-400 via-orange-500 to-red-600 rounded-xl shadow-lg transition-transform hover:scale-[1.005]">
+                            <div className="bg-slate-900 p-4 rounded-[10px] flex flex-col md:flex-row md:items-center justify-between gap-4">
+                              <div className="font-mono text-xs text-left">
+                                <p className="text-yellow-400 font-black animate-pulse flex items-center gap-1">
+                                  👑 🔴 【傳奇市民特權：直接金紅裁決令】 🔴 👑
+                                </p>
+                                <p className="text-slate-400 text-[10px] mt-1">臨時封鎖建立時間: {rep.createdAt} | 紀錄ID: {rep.id}</p>
+                                <p className="text-slate-200 font-bold mt-1.5">
+                                  神聖特權發動市民: <span className="text-yellow-400 font-extrabold underline">{rep.reporter}</span> (7階)
+                                  <span className="mx-2 text-slate-500">➔</span>
+                                  已被強制封鎖 1 小時對象: <span className="text-rose-500 font-black bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800">{rep.target}</span>
+                                </p>
+                                <p className="text-amber-250 mt-2 bg-slate-950 p-2.5 rounded-lg text-[11px] leading-relaxed italic border border-orange-500/25">
+                                  「 {rep.reason} 」
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCheatReportAction(rep.id, "BAN")}
+                                  className="px-3.5 py-1.5 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white text-xs font-black rounded-lg flex items-center space-x-1 cursor-pointer shadow-md border border-red-500"
+                                >
+                                  <Ban className="w-3.5 h-3.5" />
+                                  <span>裁決核准：改為永久封禁</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCheatReportAction(rep.id, "DISMISS")}
+                                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-350 text-xs font-bold rounded-lg flex items-center space-x-1 border border-slate-700 cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>特權回駁：撤銷臨時封鎖</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
 
-                        <div className="flex flex-wrap gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleCheatReportAction(rep.id, "BAN")}
-                            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg flex items-center space-x-1 cursor-pointer shadow-xs"
-                          >
-                            <Ban className="w-3.5 h-3.5" />
-                            <span>證實開掛：立即封禁</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCheatReportAction(rep.id, "DISMISS")}
-                            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg flex items-center space-x-1 border border-slate-200 cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            <span>查無不法：駁回檢舉</span>
-                          </button>
+                      if (rep.type === "STOP_SURVEY") {
+                        // 3 buttons for STOP_SURVEY reports
+                        return (
+                          <div key={rep.id} className="bg-amber-50/40 p-4 rounded-xl border-2 border-orange-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
+                            <div className="font-mono text-xs text-left">
+                              <p className="text-orange-700 font-bold flex items-center gap-1">
+                                🛑 【問卷封鎖停用申請】 ➔ 5階+ 答題人提請
+                              </p>
+                              <p className="text-slate-500 text-[10px] mt-1">提報時間: {rep.createdAt} | 紀錄ID: {rep.id}</p>
+                              <p className="text-slate-800 font-bold mt-1.5">
+                                檢舉市民: <span className="text-indigo-600 font-extrabold">{rep.reporter}</span>
+                                <span className="mx-2 text-slate-300">➔</span>
+                                出題人對象: <span className="text-rose-600 font-extrabold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">{rep.target}</span>
+                              </p>
+                              <p className="text-slate-650 mt-2 bg-white p-2.5 rounded-lg text-[11px] leading-relaxed italic border border-slate-200">
+                                「 {rep.reason} 」
+                              </p>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleCheatReportAction(rep.id, "BLOCK_SURVEY_ONLY")}
+                                className="px-3.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-extrabold rounded-lg flex items-center justify-center space-x-1 cursor-pointer shadow-xs border border-orange-600"
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                <span>只封鎖該問卷</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCheatReportAction(rep.id, "BLOCK_CREATOR_AND_ALL_SURVEYS")}
+                                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold rounded-lg flex items-center justify-center space-x-1 cursor-pointer shadow-xs border border-red-700"
+                              >
+                                <Ban className="w-3.5 h-3.5" />
+                                <span>該出題人的所有問卷和帳號一併封禁</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCheatReportAction(rep.id, "DISMISS")}
+                                className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg flex items-center justify-center space-x-1 border border-slate-300 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>駁回申請</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Default cheat/exploit report
+                      return (
+                        <div key={rep.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
+                          <div className="font-mono text-xs text-left">
+                            <p className="text-slate-500">通報時間: {rep.createdAt} | 紀錄ID: {rep.id}</p>
+                            <p className="text-slate-800 font-bold mt-1">
+                              舉報市民: <span className="text-indigo-600 font-extrabold">{rep.reporter}</span>
+                              <span className="mx-2 text-slate-300">➔</span>
+                              被舉報涉嫌人: <span className="text-rose-600 font-extrabold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">{rep.target}</span>
+                            </p>
+                            <p className="text-slate-650 mt-2 bg-slate-50 p-2.5 rounded-lg text-[11px] leading-relaxed italic border border-slate-100">
+                              「 {rep.reason} 」
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleCheatReportAction(rep.id, "BAN")}
+                              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg flex items-center space-x-1 cursor-pointer shadow-xs"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>證實開掛：立即封禁</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCheatReportAction(rep.id, "DISMISS")}
+                              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg flex items-center space-x-1 border border-slate-200 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>查無不法：駁回檢舉</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-xs text-slate-400 italic">目前無任何待審核的開掛或作弊舉報案件。平台環境十分整潔！</p>
                   )}
@@ -5696,6 +6007,47 @@ export default function Dashboard({
                   )}
                 </div>
               </div>
+
+              {/* 藍綠色特權申請 */}
+              {sysAccountRoleFilter === "RESPONDENT" && currentUser.role === UserRole.WEBMASTER && quotaRequests.filter(q => q.status === "PENDING").length > 0 && (
+                <div id="teal-quota-panel" className="bg-teal-50 border-2 border-teal-200 p-4 rounded-xl text-teal-950 font-sans text-xs space-y-3 shadow-xs animate-fade-in">
+                  <div className="flex items-center gap-2 text-teal-800 font-bold">
+                    <span className="text-sm">💎</span>
+                    <span>7 階傳奇答題人特權額度添加申請列表 (藍綠色特權審批面板)</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {quotaRequests.filter(q => q.status === "PENDING").map((req) => (
+                      <div key={req.id} className="bg-white p-3 rounded-lg border border-teal-150 flex items-center justify-between gap-3 shadow-2xs">
+                        <div>
+                          <p className="text-slate-500 font-mono text-[10px]">申請人: <span className="font-extrabold text-teal-700">{req.requester}</span> | 時間: {req.createdAt}</p>
+                          <p className="text-slate-800 text-[11.5px] font-bold mt-1">
+                            申請追加特權：<span className="p-1 bg-teal-50 text-teal-900 rounded font-black">{req.perkName}</span>
+                          </p>
+                          <p className="text-[11px] text-indigo-700 font-extrabold mt-0.5">
+                            欲追加數量：<span className="text-xs text-indigo-600 font-black font-mono">{req.requestedCount}</span> 次
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleApproveQuotaRequest(req)}
+                            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold rounded text-[10px] cursor-pointer shadow-xs transition-colors"
+                          >
+                            核准大加碼
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRejectQuotaRequest(req)}
+                            className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold border border-rose-200 rounded text-[10px] cursor-pointer transition-colors"
+                          >
+                            駁回申請
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Accounts Directory Table */}
               <div className="overflow-x-auto border border-slate-200/60 rounded-2xl shadow-xs">

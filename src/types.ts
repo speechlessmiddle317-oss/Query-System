@@ -26,6 +26,9 @@ export interface AppUser {
   promotedFriendsThisWeekCount_T5?: number; // legendary weekly limit tracker (up to 5阶)
   bannedOtherAppliedThisMonthCount?: number; // legendary apply to ban count tracker
   canManageTrivia?: boolean; // Privilege to add questions to trivia knowledge bank
+  extraT3Quota?: number;
+  extraT5Quota?: number;
+  extraBanQuota?: number;
 }
 
 export type QuestionType = "SINGLE_CHOICE" | "MULTI_CHOICE" | "SHORT_TEXT" | "PARAGRAPH" | "RATING";
