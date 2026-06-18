@@ -153,7 +153,7 @@ export default function Login({ onLoginSuccess, addLog }: LoginProps) {
 
     if (userRecord && userRecord.password === password) {
       if (userRecord.banned) {
-        if (userRecord.bannedReason === "SURVEY_ISSUE" || (userRecord.role === UserRole.QUESTION_CREATOR && userRecord.bannedReason !== "CHEAT")) {
+        if (userRecord.bannedReason === "SURVEY_ISSUE") {
           setError("❌ 您的帳號因問卷問題而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
           return;
         }
@@ -161,24 +161,7 @@ export default function Login({ onLoginSuccess, addLog }: LoginProps) {
           setError("❌ 您的帳號因有開掛/作弊嫌疑而被封禁停用，目前無法登入系統！如沒有嫌疑，請聯絡上級管理人員進行申訴。");
           return;
         }
-        const bannerRole = userRecord.bannedBy || UserRole.WEBMASTER;
-        let bannerRoleName = "系統站主";
-        if (bannerRole === UserRole.WEBMASTER) {
-          bannerRoleName = "系統站主";
-        } else if (bannerRole === UserRole.SUPER_ADMIN) {
-          bannerRoleName = "超級管理員";
-        } else if (bannerRole === UserRole.SYSTEM_ADMIN) {
-          bannerRoleName = "系統管理員";
-        } else if (bannerRole === UserRole.OPERATOR) {
-          bannerRoleName = "操作員";
-        } else if (bannerRole === UserRole.ANALYST) {
-          bannerRoleName = "分析員";
-        } else if (bannerRole === UserRole.QUESTION_CREATOR) {
-          bannerRoleName = "出題人";
-        } else if (bannerRole === UserRole.RESPONDENT) {
-          bannerRoleName = "答題人";
-        }
-        setError(`❌ 您的帳號已被"${bannerRoleName}"封禁停用，目前無法登入系統！如有疑問請聯絡上級管理人員。`);
+        setError('❌ 您的帳號已被"使用封禁權限的帳號權限分級"封禁停用，目前無法登入系統！如有疑問請聯絡上級管理人員。');
         return;
       }
 

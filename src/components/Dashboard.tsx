@@ -52,7 +52,8 @@ import {
   AlertTriangle,
   FileText,
   Pencil,
-  BookOpen
+  BookOpen,
+  ClipboardList
 } from "lucide-react";
 import LogView from "./LogView";
 
@@ -331,6 +332,8 @@ export default function Dashboard({
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [expandedHistId, setExpandedHistId] = useState<string | null>(null);
+
   // Stateful Trivia Questions loaded persistent from localStorage
   const [triviaQuestions, setTriviaQuestions] = useState<any[]>(() => {
     const saved = localStorage.getItem("sub_trivia_questions");
@@ -505,7 +508,11 @@ export default function Dashboard({
 
   // Helper check if current user is allowed to access specific table
   const checkTableAccess = (surveyId: string): boolean => {
-    if (currentUser.role === UserRole.WEBMASTER || currentUser.role === UserRole.SUPER_ADMIN) {
+    if (
+      currentUser.role === UserRole.WEBMASTER ||
+      currentUser.role === UserRole.SUPER_ADMIN ||
+      currentUser.role === UserRole.SYSTEM_ADMIN
+    ) {
       return true;
     }
 
@@ -513,13 +520,6 @@ export default function Dashboard({
 
     if (currentUser.role === UserRole.QUESTION_CREATOR) {
       return targetSurvey ? targetSurvey.createdBy === currentUser.username : false;
-    }
-
-    if (currentUser.role === UserRole.SYSTEM_ADMIN) {
-      if (targetSurvey && targetSurvey.distributedToAdmins === false) {
-        return false;
-      }
-      return true;
     }
 
     if (targetSurvey && targetSurvey.distributedToAdmins === false) {
@@ -2537,6 +2537,24 @@ export default function Dashboard({
               </button>
             )}
 
+            {currentUser.role === UserRole.RESPONDENT && (
+              <button
+                id="tab-btn-respondent-history"
+                onClick={() => setActiveTab("respondent_history")}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "respondent_history"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-650 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <ClipboardList className="w-4 h-4 text-emerald-500" />
+                  <span>📋 歷史問卷紀錄</span>
+                </div>
+                <ChevronRight className="w-3 h-3 opacity-60" />
+              </button>
+            )}
+
             {currentUser.role !== UserRole.RESPONDENT && (
               <button
                 id="tab-btn-analytics"
@@ -2713,6 +2731,144 @@ export default function Dashboard({
 
         {/* Tab content area */}
         <div className="lg:col-span-3">
+
+          {/* TAB: Respondent Historical Questionnaires */}
+          {activeTab === "respondent_history" && (
+            <div className="space-y-6 font-sans">
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-left space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h2 className="text-base font-extrabold text-slate-800 flex items-center space-x-2">
+                      <ClipboardList className="w-5 h-5 text-emerald-500" />
+                      <span>📋 個人已填寫問卷歷史</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      您在此可查看過去所有曾填選提交的問卷與詳細作答時間。
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-mono">
+                    已填寫: {responses.filter(r => r.submittedBy?.toLowerCase() === currentUser.username.toLowerCase()).length} 份
+                  </span>
+                </div>
+
+                {(() => {
+                  const myHistory = responses.filter(r => r.submittedBy?.toLowerCase() === currentUser.username.toLowerCase());
+                  if (myHistory.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-slate-400">
+                        <p className="text-sm font-medium">📭 目前還沒有填寫過任何問卷喔！</p>
+                        <button
+                          onClick={() => setActiveTab("respondent_game")}
+                          className="mt-4 px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 transition cursor-pointer"
+                        >
+                          去賺積分 / 闖關 ➔
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      {myHistory.map((resItem) => {
+                        const survey = questionnaires.find(q => q.id === resItem.surveyId);
+                        const isExpanded = expandedHistId === resItem.id;
+                        return (
+                          <div 
+                            key={resItem.id} 
+                            className="bg-slate-50 rounded-2xl border border-slate-150 p-5 space-y-4 hover:shadow-xs transition duration-150"
+                          >
+                            <div className="flex justify-between items-start flex-wrap gap-2">
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-[10px] font-mono font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">
+                                    問卷 ID: {resItem.surveyId}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-slate-400">
+                                    憑證: {resItem.id}
+                                  </span>
+                                </div>
+                                <h3 className="text-sm font-bold text-slate-800">
+                                  {survey?.title || "已刪除的問卷 (歷史紀錄保留)"}
+                                </h3>
+                                <p className="text-xs text-slate-500">
+                                  {survey?.description || "此問卷已被管理員移除。"}
+                                </p>
+                              </div>
+                              <div className="text-right text-xs">
+                                <span className="text-[10px] text-slate-400 block font-mono">
+                                  📅 提交時間
+                                </span>
+                                <span className="font-semibold text-slate-700 font-mono">
+                                  {resItem.submittedAt}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Details Toggle */}
+                            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                              <span className="text-[11px] text-emerald-600 font-bold flex items-center">
+                                <Check className="w-3.5 h-3.5 mr-1" /> 已成功送出
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => setExpandedHistId(isExpanded ? null : resItem.id)}
+                                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center cursor-pointer"
+                              >
+                                {isExpanded ? "收起填答明細 ▲" : "查看我填寫的內容 目錄 ▼"}
+                              </button>
+                            </div>
+
+                            {/* Expanded details */}
+                            {isExpanded && (
+                              <div className="bg-white rounded-xl border border-slate-200 p-4 mt-2 space-y-3.5 text-xs animate-fade-in">
+                                <h4 className="font-extrabold text-slate-700 border-b pb-2 text-left">📋 當時我的填答答案明細</h4>
+                                <div className="space-y-3">
+                                  {survey ? (
+                                    survey.questions.map((q: any, idx: number) => {
+                                      const answerVal = resItem.answers[q.id];
+                                      let displayVal = "";
+                                      if (answerVal === undefined || answerVal === null) {
+                                        displayVal = "（未回答或跳過）";
+                                      } else if (Array.isArray(answerVal)) {
+                                        displayVal = answerVal.length > 0 ? answerVal.join(", ") : "（未選擇）";
+                                      } else if (typeof answerVal === "object") {
+                                        displayVal = JSON.stringify(answerVal);
+                                      } else {
+                                        displayVal = String(answerVal);
+                                      }
+
+                                      return (
+                                        <div key={q.id} className="space-y-1 border-b border-dashed border-slate-100 last:border-b-0 pb-2.5 last:pb-0">
+                                          <div className="text-slate-600 font-medium text-left">
+                                            Q{idx+1}. {q.title} 
+                                            <span className="text-[10px] font-mono text-slate-400 ml-1.5 uppercase font-bold">
+                                              ({q.type === "SINGLE_CHOICE" ? "單選" : q.type === "MULTI_CHOICE" ? "多選" : q.type === "RATING" ? "評分" : "文字"})
+                                            </span>
+                                          </div>
+                                          <div className="bg-slate-50/75 p-2 rounded-lg border border-slate-100 font-mono text-xs text-indigo-950 font-bold text-left">
+                                            {displayVal}
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <p className="text-slate-400 italic">問卷原始資料已卸載，無法讀取題目詳情。</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+              </div>
+            </div>
+          )}
 
           {/* TAB 0: Respondent Gamified Portal */}
           {activeTab === "respondent_game" && (
@@ -6267,6 +6423,20 @@ export default function Dashboard({
                                 <div className="space-y-2">
                                   <div className="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-2 py-0.5 font-bold inline-block">
                                     📝 出題人本級：僅能存取與統計個人創建之問卷
+                                  </div>
+
+                                  {/* Star Level Select for Creator */}
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-slate-400 font-bold select-none">調升等階 (星級):</span>
+                                    <select
+                                      value={uObj.starLevel || 1}
+                                      onChange={(e) => handleUpdateUserStar(uname, Number(e.target.value))}
+                                      className="font-mono bg-white border border-slate-150 rounded text-[10px] p-0.5 text-indigo-600 font-bold outline-none cursor-pointer focus:border-indigo-500"
+                                    >
+                                      <option value={1}>⭐ 1 階 (限制級)</option>
+                                      <option value={2}>⭐⭐ 2 階 (中等權限)</option>
+                                      <option value={3}>⭐⭐⭐ 3 階 (最高解鎖)</option>
+                                    </select>
                                   </div>
                                   
                                   {/* Privilege Toggle */}
