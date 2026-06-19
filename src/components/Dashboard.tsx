@@ -1204,6 +1204,30 @@ export default function Dashboard({
   // Submit privilege quota requests (Tier 7+)
   const handleQuotaRequestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (quotaPerkType === "T3") {
+      const maxT3 = 15 + (currentUser.extraT3Quota || 0);
+      const usedT3 = currentUser.promotedFriendsThisMonthCount_T3 || 0;
+      if (usedT3 < maxT3) {
+        alert(`⚠️ 您的「白銀直升額度」尚未用完（當前已用 ${usedT3} / 可用 ${maxT3}），暫不需申請追加！`);
+        return;
+      }
+    } else if (quotaPerkType === "T5") {
+      const maxT5 = 2 + (currentUser.extraT5Quota || 0);
+      const usedT5 = currentUser.promotedFriendsThisWeekCount_T5 || 0;
+      if (usedT5 < maxT5) {
+        alert(`⚠️ 您的「白金直升額度」尚未用完（當前已用 ${usedT5} / 可用 ${maxT5}），暫不需申請追加！`);
+        return;
+      }
+    } else if (quotaPerkType === "BAN_OTHER") {
+      const maxBan = 4 + (currentUser.extraBanQuota || 0);
+      const usedBan = currentUser.bannedOtherAppliedThisMonthCount || 0;
+      if (usedBan < maxBan) {
+        alert(`⚠️ 您的「臨時封鎖額度」尚未用完（當前已用 ${usedBan} / 可用 ${maxBan}），暫不需申請追加！`);
+        return;
+      }
+    }
+
     let perkName = "";
     if (quotaPerkType === "T3") perkName = "3階 (白銀) 朋友直接晉升額度";
     else if (quotaPerkType === "T5") perkName = "5階 (白金) 朋友直接晉升額度";
@@ -3800,6 +3824,80 @@ export default function Dashboard({
                   </div>
                 </div>
               )}
+
+              {/* Modal 7: Quota request modal */}
+              {showQuotaRequestModal && (
+                <div id="quota-request-modal" className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-slate-100 shadow-xl space-y-4 text-left">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                      <h4 className="text-sm font-extrabold text-slate-800 flex items-center space-x-1.5">
+                        <span className="text-teal-600 text-lg">💎</span>
+                        <span>傳奇市民特權：向站主申請追加特權次數</span>
+                      </h4>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowQuotaRequestModal(false)} 
+                        className="text-slate-400 hover:text-slate-600 font-bold text-xs select-none cursor-pointer w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleQuotaRequestSubmit} className="space-y-4 font-sans">
+                      <div className="bg-teal-55 rounded-lg p-2.5 text-teal-800 text-[10px] leading-normal border border-teal-100 flex items-start space-x-1">
+                        <span className="text-xs">💡</span>
+                        <span>作為 7 階傳奇市民，當您的限制特權用完時，您可以挑選特定的特權技能並申請追加更多額度次數，提交後將呈報至站主後台審核。</span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-550 block">選擇需要追加額度的特權種類</label>
+                        <select
+                          value={quotaPerkType}
+                          onChange={(e) => setQuotaPerkType(e.target.value as any)}
+                          className="w-full border border-slate-205 bg-white rounded-lg p-2 text-xs text-slate-705 outline-none font-bold"
+                          required
+                        >
+                          <option value="T3">白銀 (3 階) 朋友一鍵提拔直升額度</option>
+                          <option value="T5">白金 (5 階) 朋友一鍵提拔直升額度</option>
+                          <option value="BAN_OTHER">傳奇 1 小時強制臨時封鎖違規帳戶額度</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-550 block">選擇或填寫需要追加的次數</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={50}
+                            value={quotaRequestCount}
+                            onChange={(e) => setQuotaRequestCount(Math.max(1, Math.min(50, Number(e.target.value))))}
+                            className="w-24 border border-slate-205 rounded-lg p-2 text-xs text-slate-705 outline-none font-bold font-mono"
+                            required
+                          />
+                          <span className="text-xs text-slate-500 font-semibold">次 (限定 1 ~ 50 次)</span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                        <button 
+                          type="button" 
+                          onClick={() => setShowQuotaRequestModal(false)} 
+                          className="px-3.5 py-1.5 border border-slate-200 text-slate-505 rounded-lg font-bold text-xs cursor-pointer hover:bg-slate-50"
+                        >
+                          取消
+                        </button>
+                        <button 
+                          type="submit" 
+                          className="px-5 py-1.5 bg-teal-650 hover:bg-teal-550 text-white font-extrabold rounded-lg text-xs cursor-pointer shadow-xs transition-all"
+                        >
+                          遞交加碼申請
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
               {/* MODALS RENDERING END */}
             </div>
           )}
@@ -5596,8 +5694,17 @@ export default function Dashboard({
 
                       {/* Role level customization block */}
                       <div className="p-3 bg-indigo-50/45 border border-indigo-150 rounded-lg flex flex-col sm:flex-row gap-2 items-end">
-                        <div className="flex-1 space-y-1">
-                          <label className="text-[9px] text-indigo-950 font-bold block">變更此帳號的角色職級 (Role Adjustment)</label>
+                        <div className="flex-1 space-y-1 w-full">
+                          <div className="flex justify-between items-center w-full">
+                            <label className="text-[9px] text-indigo-950 font-bold block select-none">變更此帳號的角色職級 (Role Adjustment)</label>
+                            <button
+                              type="button"
+                              onClick={() => setShowPrivilegeDescModal(true)}
+                              className="text-[9px] text-indigo-600 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                            >
+                              💡 檢視各階級與星等特權
+                            </button>
+                          </div>
                           <select
                             value={rbacUsers[rbacSelectedUser].role}
                             onChange={(e) => {
@@ -5769,18 +5876,33 @@ export default function Dashboard({
                     <label className="text-xs font-bold text-slate-500">
                       當前帳號名稱: <span className="text-indigo-600 underline font-mono select-all ml-1.5">{currentUser.username}</span>
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowPrivilegeDescModal(true)}
-                      className="w-full text-left bg-slate-50 hover:bg-slate-100 hover:border-slate-300 active:bg-slate-200 border border-slate-150 p-2.5 rounded-xl text-slate-600 font-mono text-xs flex justify-between items-center transition-all cursor-pointer group"
+                    <div
+                      className="w-full bg-slate-50 border border-slate-150 p-2.5 rounded-xl text-slate-600 font-mono text-xs flex justify-between items-center"
                     >
-                      <span className="flex items-center gap-1.5">
-                        🔑 <span>此帳戶後台權限</span>
-                        <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded cursor-pointer group-hover:scale-105 transition-all">
-                          [點選: 權限分級 💡]
+                      <span className="flex items-center gap-1.5 select-none">
+                        🔑 <span 
+                          onClick={() => setShowPrivilegeDescModal(true)}
+                          className="hover:text-indigo-600 hover:underline cursor-pointer transition-all font-bold"
+                          title="點選查看權限分級說明"
+                        >
+                          此帳戶後台權限 / 權限分級
                         </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowPrivilegeDescModal(true);
+                          }}
+                          className="text-[10px] text-indigo-600 font-bold bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded cursor-pointer transition-all active:scale-95"
+                        >
+                          [點選: 權限分級 💡]
+                        </button>
                       </span>
-                      <span className="text-indigo-700 bg-indigo-50 border border-indigo-200 font-bold font-sans rounded px-2.5 py-0.5 text-[10px] group-hover:bg-indigo-100 transition-colors">
+                      <span 
+                        onClick={() => setShowPrivilegeDescModal(true)}
+                        className="text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 font-bold font-sans rounded px-2.5 py-0.5 text-[10px] cursor-pointer transition-colors"
+                        title="點選查看此身分權利"
+                      >
                         {currentUser.role === UserRole.WEBMASTER && "👑 系統站主"}
                         {currentUser.role === UserRole.SUPER_ADMIN && "⭐ 超級管理員"}
                         {currentUser.role === UserRole.SYSTEM_ADMIN && "系統管理員"}
@@ -5789,7 +5911,7 @@ export default function Dashboard({
                         {currentUser.role === UserRole.QUESTION_CREATOR && "出題人員"}
                         {currentUser.role === UserRole.RESPONDENT && "答題人員"}
                       </span>
-                    </button>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
