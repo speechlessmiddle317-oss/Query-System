@@ -37,7 +37,13 @@ import {
   LogOut,
   Calendar,
   Lock,
-  Smartphone
+  Smartphone,
+  CheckCircle2,
+  Globe2,
+  MessagesSquare,
+  ArrowRight,
+  BarChart3,
+  KeyRound
 } from "lucide-react";
 
 export default function App() {
@@ -454,81 +460,154 @@ export default function App() {
     }
 
     // 4. Default: Lobby "問卷填表及查詢大廳" (Interactive Home)
+    const activeQuestionnaires = questionnaires.filter((q) => q.isActive);
+    const allQuerySystems = questionnaires.flatMap(q => q.querySystems.map(sys => ({ ...sys, parentSurvey: q })));
+
     return (
-      <div className="space-y-8" id="default-lobby-grid">
+      <div className="public-site space-y-10" id="default-lobby-grid">
         
         {/* Welcome Section */}
-        <section className="bg-slate-900 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl md:p-12">
-          <div className="absolute -right-20 -top-20 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl" />
-          <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-amber-500/15 rounded-full blur-3xl" />
-          
-          <div className="relative max-w-xl space-y-4">
-            <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white/10 rounded-full text-xs text-amber-300 font-semibold uppercase tracking-wider backdrop-blur-md">
-              <Compass className="w-3.5 h-3.5" />
-              <span>全台學術暨市民滿意度調查平台</span>
-            </div>
-            
-            <h1 className="text-3xl font-extrabold tracking-tight md:text-3xl leading-snug">
-              公開透明的反饋、更正與統計查核通道。
-            </h1>
-            
-            <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-              本平台致力於提供市民與學子公平、私密且合規的安全反饋空間。您可以在此填寫問卷，
-              或是使用特邀代表指派的單一通道「專屬直達網址」安全查詢並即時進行線上資訊修正！
-            </p>
+        <section className="public-hero relative overflow-hidden rounded-[2rem] border border-stone-200 bg-[#f7f2e8] text-stone-950 shadow-sm">
+          <div className="public-hero__wash" />
+          <div className="relative grid min-h-[520px] grid-cols-1 lg:grid-cols-[1.05fr_.95fr]">
+            <div className="flex flex-col justify-between gap-12 p-6 md:p-10 lg:p-14">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-stone-300/80 bg-white/60 px-3 py-1.5 text-xs font-bold text-stone-700 backdrop-blur">
+                  <Globe2 className="h-3.5 w-3.5 text-teal-700" />
+                  <span>所有人都能使用</span>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-stone-300/80 bg-white/60 px-3 py-1.5 text-xs font-bold text-stone-700 backdrop-blur">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />
+                  <span>手機、平板、桌機皆可操作</span>
+                </div>
+              </div>
 
-            <div className="pt-2 flex flex-wrap items-center gap-3">
-              <a
-                href="#admin"
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center space-x-1"
-              >
-                <ShieldCheck className="w-4 h-4 text-white" />
-                <span>登入管理員與分級後台 (RBAC)</span>
-              </a>
+              <div className="max-w-3xl">
+                <p className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.32em] text-teal-800">Public Survey Hall</p>
+                <h1 className="font-display text-4xl font-black leading-[1.05] text-stone-950 md:text-6xl">
+                  公共問卷與意見回饋網站
+                </h1>
+                <p className="mt-6 max-w-2xl text-base leading-8 text-stone-700 md:text-lg">
+                  不需要安裝 App。民眾可以直接填寫公開問卷，授權人員可進入專屬查詢通道，管理者也能登入後台整理資料與追蹤紀錄。
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <a
+                  href="#survey-list"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-stone-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-800"
+                >
+                  <PenTool className="h-4 w-4" />
+                  <span>開始填寫問卷</span>
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+                <a
+                  href="#admin"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-stone-300 bg-white/70 px-5 py-3 text-sm font-bold text-stone-800 backdrop-blur transition hover:-translate-y-0.5 hover:bg-white"
+                >
+                  <ShieldCheck className="h-4 w-4 text-teal-700" />
+                  <span>管理者登入</span>
+                </a>
+              </div>
+            </div>
+
+            <div className="relative min-h-[360px] border-t border-stone-200 bg-stone-950 p-6 text-white lg:border-l lg:border-t-0 md:p-10">
+              <div className="absolute inset-0 public-hero__panel" />
+              <div className="relative flex h-full flex-col justify-between gap-8">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+                    <p className="text-3xl font-black">{activeQuestionnaires.length}</p>
+                    <p className="mt-1 text-xs font-semibold text-stone-300">開放問卷</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+                    <p className="text-3xl font-black">{responses.length}</p>
+                    <p className="mt-1 text-xs font-semibold text-stone-300">已記錄回覆</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full w-[72%] rounded-full bg-teal-300" />
+                  </div>
+                  <div className="grid gap-3 text-sm text-stone-200">
+                    <div className="flex items-center gap-3">
+                      <MessagesSquare className="h-4 w-4 text-teal-300" />
+                      <span>公開回饋、匿名填答與電子信箱留存皆可並行</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <KeyRound className="h-4 w-4 text-amber-300" />
+                      <span>敏感問卷與查詢通道支援密碼保護</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <BarChart3 className="h-4 w-4 text-emerald-300" />
+                      <span>後台可管理問卷、回覆、權限與稽核紀錄</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {[
+            { icon: PenTool, title: "填寫", text: "選擇目前開放的問卷，依題型逐步完成送出。" },
+            { icon: Search, title: "查詢", text: "透過授權通道查找特定資料，必要時進行更正。" },
+            { icon: ShieldCheck, title: "管理", text: "管理者登入後台維護問卷、權限、紀錄與回覆。" }
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.title} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-800">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <h2 className="text-lg font-black text-stone-950">{item.title}</h2>
+                <p className="mt-2 text-sm leading-6 text-stone-600">{item.text}</p>
+              </div>
+            );
+          })}
+        </section>
+
         {/* Home main split view */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3" id="survey-list">
           
           {/* Left panel: active surveys list */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center space-x-2">
-                <PenTool className="w-5 h-5 text-blue-600" />
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <h2 className="flex items-center space-x-2 text-lg font-black text-stone-900">
+                <PenTool className="w-5 h-5 text-teal-700" />
                 <span>開放進行中之統計問卷填寫</span>
               </h2>
-              <span className="text-xs text-slate-400 font-mono">
-                共 {questionnaires.length} 張問卷在線
+              <span className="font-mono text-xs text-stone-500">
+                共 {activeQuestionnaires.length} 張開放
               </span>
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              {questionnaires.map((q) => (
+              {activeQuestionnaires.map((q) => (
                 <div 
                   key={q.id} 
-                  className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-left"
+                  className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-stone-200 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md md:flex-row md:items-center"
                 >
                   <div className="space-y-1.5 flex-1 max-w-xl">
                     <div className="flex items-center space-x-2 flex-wrap gap-y-1.5">
-                      <span className="text-[9px] bg-blue-50 text-blue-700 font-extrabold px-1.5 py-0.5 rounded font-mono">
+                      <span className="rounded bg-teal-50 px-1.5 py-0.5 font-mono text-[9px] font-extrabold text-teal-800">
                         問卷ID: {q.id}
                       </span>
                       {q.passwordRequired && (
-                        <span className="text-[9px] bg-rose-50 text-rose-600 font-bold px-1.5 py-0.5 rounded flex items-center">
+                        <span className="flex items-center rounded bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">
                           <Lock className="w-3 h-3 mr-1" />
                           密碼防護開啟
                         </span>
                       )}
                       {q.emailNotificationEnabled && (
-                        <span className="text-[9px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.5 rounded">
+                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
                           自動電郵憑證
                         </span>
                       )}
                     </div>
-                    <h3 className="text-base font-bold text-slate-800 leading-snug">{q.title}</h3>
-                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{q.description}</p>
+                    <h3 className="text-base font-black leading-snug text-stone-900">{q.title}</h3>
+                    <p className="line-clamp-2 text-xs leading-relaxed text-stone-500">{q.description}</p>
                   </div>
 
                   <div className="shrink-0 flex items-center space-x-2">
@@ -538,33 +617,38 @@ export default function App() {
                         setSelectedSurveyToFill(q);
                         window.location.hash = `#fill/${q.id}`;
                       }}
-                      className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-sm cursor-pointer"
+                      className="cursor-pointer rounded-xl bg-stone-950 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-teal-800"
                     >
-                      進入填報填寫表單
+                      進入填寫
                     </button>
                   </div>
                 </div>
               ))}
+              {activeQuestionnaires.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center text-sm font-semibold text-stone-500">
+                  目前尚無開放中的問卷。
+                </div>
+              )}
             </div>
           </div>
 
           {/* Right panel: Sub-query channels list */}
           <div className="lg:col-span-1 space-y-4">
             <div className="flex items-center justify-between border-b pb-2">
-              <h2 className="text-md font-bold text-slate-800 flex items-center space-x-2">
-                <Search className="w-4.5 h-4.5 text-amber-500" />
+              <h2 className="text-md flex items-center space-x-2 font-black text-stone-900">
+                <Search className="w-4.5 h-4.5 text-amber-600" />
                 <span>專門稽核：獨立子查詢通道</span>
               </h2>
             </div>
 
-            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100/60 text-left space-y-3">
-              <p className="text-xs text-slate-500 leading-relaxed">
-                不同問卷配有專屬密碼的「獨立查詢窗口」，點選進入對應的窗口僅可查詢、線上修改該問卷數據：
+            <div className="space-y-3 rounded-2xl border border-stone-200 bg-stone-50 p-4 text-left">
+              <p className="text-xs leading-relaxed text-stone-500">
+                授權單位可使用對應查詢窗口，僅處理該問卷允許查詢與更正的資料：
               </p>
 
               <div className="space-y-2.5">
-                {questionnaires.flatMap(q => q.querySystems.map(sys => ({ ...sys, parentSurvey: q }))).map((sysItem) => (
-                  <div key={sysItem.id} className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-xs flex flex-col justify-between gap-2">
+                {allQuerySystems.map((sysItem) => (
+                  <div key={sysItem.id} className="flex flex-col justify-between gap-2 rounded-xl border border-stone-200 bg-white p-3.5 shadow-xs">
                     <div>
                       <span className="text-[9px] bg-amber-50 text-amber-800 font-bold px-1.5 py-0.5 rounded">
                         通道ID: {sysItem.id}
@@ -586,20 +670,19 @@ export default function App() {
                   </div>
                 ))}
 
-                {questionnaires.every(q => q.querySystems && q.querySystems.length === 0) && (
+                    {allQuerySystems.length === 0 && (
                   <p className="text-xs text-slate-400 italic text-center py-4">目前系統管理端尚無制定任何子查詢系統。</p>
                 )}
               </div>
             </div>
 
-            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-left space-y-2.5">
-              <span className="text-xs font-bold text-blue-900 flex items-center">
-                <Smartphone className="w-4 h-4 mr-1 text-blue-600" />
-                <span>完美行動流暢響應式設計</span>
+            <div className="space-y-2.5 rounded-2xl border border-teal-100 bg-teal-50 p-4 text-left">
+              <span className="flex items-center text-xs font-bold text-teal-950">
+                <Smartphone className="mr-1 h-4 w-4 text-teal-700" />
+                <span>跨裝置公開使用</span>
               </span>
-              <p className="text-[11px] text-blue-750 leading-relaxed">
-                本系統原生符合響應式佈局規格，使用者不論在手機端、平板電腦或是寬型電腦桌面，皆能完美載入、
-                流暢直覺地填寫所有題型與查詢。
+              <p className="text-[11px] leading-relaxed text-teal-900">
+                網站第一屏即提供填寫、查詢與管理入口，民眾可以用手機直接完成問卷。
               </p>
             </div>
           </div>
